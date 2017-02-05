@@ -125,13 +125,18 @@ class DKF(BaseModel, object):
         if self.params['data_type']=='binary':
             npWeights['p_emis_W_ber'] = self._getWeight((self.params['dim_hidden'], self.params['dim_observations']))
             npWeights['p_emis_b_ber'] = self._getWeight((self.params['dim_observations'],))
+        if self.params['data_type']=='real':
+            npWeights['p_emis_W_mu'] = self._getWeight((self.params['dim_hidden'], self.params['dim_observations']))
+            npWeights['p_emis_b_mu'] = self._getWeight((self.params['dim_observations'],))
+            npWeights['p_emis_W_var'] = self._getWeight((self.params['dim_hidden'], self.params['dim_observations']))
+            npWeights['p_emis_b_var'] = self._getWeight((self.params['dim_observations'],))
         elif self.params['data_type']=='binary_nade':
             n_visible, n_hidden   = self.params['dim_observations'], self.params['dim_hidden']
             npWeights['p_nade_W'] = self._getWeight((n_visible, n_hidden))
             npWeights['p_nade_U'] = self._getWeight((n_visible,n_hidden))
             npWeights['p_nade_b'] = self._getWeight((n_visible,))
         else:
-            assert False,'Invalid datatype: '+params['data_type']
+            assert False,'Invalid datatype: '+self.params['data_type']
 
     def _createInferenceParams(self, npWeights):
         """  Create weights/params for inference network """
@@ -226,6 +231,25 @@ class DKF(BaseModel, object):
             else:
                 mean_params=T.nnet.sigmoid(T.dot(hid,self.tWeights['p_emis_W_ber'])+self.tWeights['p_emis_b_ber'])
             return [mean_params]
+        elif self.params['data_type']=='real':
+            # for real vars, we use linear mean activation and log(1+exp(x))
+            # variance activation
+            if self.params['emission_type']=='res':
+                # I've left the 'residual' (? is that it) thing out of the
+                # variance calculation; I don't think it makes sense there
+                # (even though it makes perfect sense for the mean)
+                res_out = T.dot(z, self.tWeights['p_res_W'])
+                hid_mu = res_out + T.dot(hid, self.tWeights['p_emis_W_mu']) \
+                         + self.tWeights['p_emis_b_mu']
+                hid_var = T.nnet.softplus(
+                    T.dot(hid, self.tWeights['p_emis_W_var'])  + self.tWeights['p_emis_b_var']
+                )
+            else:
+                hid_mu = T.dot(hid, self.tWeights['p_emis_W_mu']) + self.tWeights['p_emis_b_mu']
+                hid_var = T.nnet.softplus(
+                    T.dot(hid, self.tWeights['p_emis_W_var']) + self.tWeights['p_emis_b_var']
+                )
+            return (hid_mu, hid_var)
         elif self.params['data_type']=='binary_nade':
             self._p('NADE observations')
             assert X is not None,'Need observations for NADE'

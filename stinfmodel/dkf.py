@@ -130,7 +130,7 @@ class DKF(BaseModel, object):
             npWeights['p_nade_U'] = self._getWeight((n_visible,n_hidden))
             npWeights['p_nade_b'] = self._getWeight((n_visible,))
         else:
-            assert False,'Invalid datatype: '+params['data_type']
+            assert False,'Invalid datatype: '+self.params['data_type']
 
     def _createInferenceParams(self, npWeights):
         """  Create weights/params for inference network """
