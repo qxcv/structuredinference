@@ -22,4 +22,7 @@ def loadDataset():
     dataset['dim_observations'] = dim_observations
     dataset['data_type']        = 'real'
 
+    dataset['h36m_mean'] = mean
+    dataset['h36m_std'] = std
+
     return dataset

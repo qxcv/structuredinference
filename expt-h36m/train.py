@@ -1,8 +1,5 @@
 import os,time,sys,addpaths
 
-# Add the higher level directory to PYTHONPATH to be able to access the models
-sys.path.append('../')
-
 # Change this to modify the loadDataset function
 from load import loadDataset
 

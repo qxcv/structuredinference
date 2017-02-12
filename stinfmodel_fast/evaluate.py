@@ -86,7 +86,7 @@ def impSamplingNLL(dkf, dataset, mask, batch_size, S = 2, normalization = 'frame
     return ll
 
 
-def sampleGaussian(dkf,mu,logcov):
+def sampleGaussian(mu,logcov):
         return mu + np.random.randn(*mu.shape)*np.exp(0.5*logcov)
 
 def sample(dkf, nsamples=100, T=10, additional = {}):
@@ -101,7 +101,7 @@ def sample(dkf, nsamples=100, T=10, additional = {}):
     additional['logcov'] = []
     for t in range(T-1):
         mu,logcov = dkf.transition_fxn(z)
-        z           = dkf.sampleGaussian(mu,logcov).astype(config.floatX)
+        z         = sampleGaussian(mu,logcov).astype(config.floatX)
         all_zs.append(np.copy(z))
         additional['mu'].append(np.copy(mu))
         additional['logcov'].append(np.copy(logcov))
