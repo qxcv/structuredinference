@@ -7,18 +7,23 @@ from utils.misc import saveHDF5
 import time
 from theano import config
 
-def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000, 
-          batch_size=200, shuffle=True,
-          savefreq=None, savefile = None, 
-          dataset_eval = None, mask_eval = None, 
-          replicate_K = None,
-          normalization = 'frame'):
+def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000, batch_size=200,
+          shuffle=True, savefreq=None, savefile=None, dataset_eval=None,
+          mask_eval=None, replicate_K=None, normalization='frame',
+          cond_vals=None):
     """
                                             Train DKF
     """
     assert not dkf.params['validate_only'],'cannot learn in validate only mode'
     assert len(dataset.shape)==3,'Expecting 3D tensor for data'
     assert dataset.shape[2]==dkf.params['dim_observations'],'Dim observations not valid'
+    assert ('use_cond' in dkf.params)==(cond_vals is not None), \
+        "should get cond_vals iff use_cond is given"
+    if cond_vals is not None:
+        assert cond_vals.ndim == 3, cond_vals.shape
+        assert cond_vals.shape[:2] == dataset.shape[:2], \
+            "expected cond_vals to be shape %r, but got shape %r" \
+            % (dataset.shape, cond_vals.shape)
     N = dataset.shape[0]
     idxlist   = range(N)
     batchlist = np.split(idxlist, range(batch_size,N,batch_size))
@@ -28,7 +33,7 @@ def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000,
 
     #Lists used to track quantities for synthetic experiments
     mu_list_train, cov_list_train, mu_list_valid, cov_list_valid = [],[],[],[]
-    model_params = {} 
+    model_params = {}
 
     #Start of training loop
     if 'synthetic' in dkf.params['dataset']:
@@ -37,7 +42,7 @@ def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000,
         epfreq = 1
 
     #Set data
-    dkf.resetDataset(dataset, mask)
+    dkf.resetDataset(dataset, mask, newU=cond_vals)
     for epoch in range(epoch_start, epoch_end):
         #Shuffle
         if shuffle:
@@ -91,12 +96,13 @@ def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000,
                 tmpMap = {}
                 bound_valid_list.append(
                     (epoch, 
-                     DKF_evaluate.evaluateBound(dkf, dataset_eval, mask_eval, batch_size=batch_size, 
-                                              additional = tmpMap, normalization=normalization)))
+                     DKF_evaluate.evaluateBound(dkf, dataset_eval, mask_eval, batch_size=batch_size,
+                                                additional = tmpMap, normalization=normalization,
+                                                cond_vals=cond_vals)))
                 bound_tsbn_list.append((epoch, tmpMap['tsbn_bound']))
                 nll_valid_list.append(
                     DKF_evaluate.impSamplingNLL(dkf, dataset_eval, mask_eval, batch_size,
-                                                                  normalization=normalization))
+                                                normalization=normalization, cond_vals=cond_vals))
             intermediate['valid_bound'] = np.array(bound_valid_list)
             intermediate['train_bound'] = np.array(bound_train_list)
             intermediate['tsbn_bound']  = np.array(bound_tsbn_list)
@@ -130,7 +136,7 @@ def learn(dkf, dataset, mask, epoch_start=0, epoch_end=1000,
                     intermediate[k+'_learned'] = np.array(model_params[k]).squeeze() 
             saveHDF5(savefile+'-EP'+str(epoch)+'-stats.h5', intermediate)
             ### Update X in the computational flow_graph to point to training data
-            dkf.resetDataset(dataset, mask)
+            dkf.resetDataset(dataset, mask, newU=cond_vals)
     #Final information to be collected
     retMap = {}
     retMap['train_bound']   = np.array(bound_train_list)

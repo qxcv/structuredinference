@@ -6,7 +6,6 @@
 chkpt*
 *.png
 *.pkl
-*.sh
 *.pkl.gz
 chkpt-*/
 *.o*

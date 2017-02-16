@@ -1,11 +1,18 @@
 import numpy as np
 
-from generate_seq_gan import load_data
+from h36m_loader import load_data
 
-def loadDataset():
+def loadDataset(use_cond=False):
     seq_length = 32
     seq_skip = 3
-    train_X, val_X, mean, std = load_data(seq_length, seq_skip, val_subj_5=False)
+    if use_cond:
+        train_X, val_X, mean, std, train_actions, val_actions, act_names \
+            = load_data(seq_length, seq_skip, val_subj_5=False,
+                        return_actions=True)
+    else:
+        train_X, val_X, mean, std \
+            = load_data(seq_length, seq_skip, val_subj_5=False,
+                        return_actions=False)
     dim_observations = train_X.shape[2]
 
     dataset = {}
@@ -24,5 +31,11 @@ def loadDataset():
 
     dataset['h36m_mean'] = mean
     dataset['h36m_std'] = std
+
+    if use_cond:
+        dataset['train_cond_vals'] = train_actions
+        dataset['val_cond_vals'] = val_actions
+        dataset['test_cond_vals'] = val_actions
+        dataset['h36m_action_names'] = act_names
 
     return dataset

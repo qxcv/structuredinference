@@ -10,9 +10,16 @@ from parse_args_dkf import params
 # Some utility functions from theanomodels
 from utils.misc import removeIfExists,createIfAbsent,mapPrint,saveHDF5,displayTime
 
-
 # Load the dataset into a hashmap. See load.py for details
-dataset = loadDataset()
+dataset = loadDataset(use_cond=params['use_cond'])
+if params['use_cond']:
+    print('Using conditioning information')
+    train_cond_vals = dataset['train_cond_vals']
+    val_cond_vals = dataset['val_cond_vals']
+    assert train_cond_vals.ndim == 3, train_cond_vals.shape
+    params['dim_cond'] = train_cond_vals.shape[2]
+else:
+    train_cond_vals = val_cond_vals = None
 params['savedir']+='-h36m'
 createIfAbsent(params['savedir'])
 
@@ -57,23 +64,26 @@ savef     = os.path.join(params['savedir'],params['unique_id'])
 print 'Savefile: ',savef
 start_time= time.time()
 
+
 # Learn the model (see stinfmodel/learning.py)
 savedata = DKF_learn.learn(dkf, dataset['train'], dataset['mask_train'],
-                                epoch_start  = 0,
-                                epoch_end    = params['epochs'],
-                                batch_size   = params['batch_size'],
-                                savefreq     = params['savefreq'],
-                                savefile     = savef,
-                                dataset_eval = dataset['valid'],
-                                mask_eval    = dataset['mask_valid'],
-                                replicate_K  = params['replicate_K'],
-                                shuffle      = False
-                                )
+                                epoch_start=0,
+                                epoch_end=params['epochs'],
+                                batch_size=params['batch_size'],
+                                savefreq=params['savefreq'],
+                                savefile=savef,
+                                dataset_eval=dataset['valid'],
+                                mask_eval=dataset['mask_valid'],
+                                replicate_K=params['replicate_K'],
+                                shuffle=False,
+                                cond_vals=train_cond_vals)
 displayTime('Running DKF',start_time, time.time())
 
 # Evaluate bound on test set (see stinfmodel/evaluate.py)
-savedata['bound_test'] = DKF_evaluate.evaluateBound(dkf, dataset['test'], dataset['mask_test'], 
-                                           batch_size = params['batch_size'])
+savedata['bound_test'] \
+    = DKF_evaluate.evaluateBound(dkf, dataset['test'], dataset['mask_test'],
+                                 batch_size = params['batch_size'],
+                                 cond_vals=test_cond_vals)
 saveHDF5(savef+'-final.h5',savedata)
 print 'Test Bound: ',savedata['bound_test']
 import ipdb;ipdb.set_trace()

@@ -5,23 +5,24 @@ import time
 """
 Functions for evaluating a DKF object
 """
-def infer(dkf, dataset, mask):
+def infer(dkf, dataset, mask, cond_vals=None):
     """ Posterior Inference using recognition network 
     Returns: z,mu,logcov (each a 3D tensor) Remember to multiply each by the mask of the dataset before
     using the latent variables
     """
-    dkf.resetDataset(dataset,mask,quiet=True)
+    dkf.resetDataset(dataset,mask,quiet=True,newU=cond_vals)
     assert len(dataset.shape)==3,'Expecting 3D tensor for data' 
     assert dataset.shape[2]==dkf.params['dim_observations'],'Data dim. not matching'
     return dkf.posterior_inference(idx=np.arange(dataset.shape[0]))
 
-def evaluateBound(dkf, dataset, mask, batch_size,S=2, normalization = 'frame', additional={}):
+def evaluateBound(dkf, dataset, mask, batch_size,S=2, normalization='frame',
+                  cond_vals=None, additional={}):
     """ Evaluate ELBO """
     bound = 0
     start_time = time.time()
     N = dataset.shape[0]
     tsbn_bound  = 0
-    dkf.resetDataset(dataset,mask)
+    dkf.resetDataset(dataset,mask,newU=cond_vals)
     for bnum,st_idx in enumerate(range(0,N,batch_size)):
         end_idx = min(st_idx+batch_size, N)
         idx_data= np.arange(st_idx,end_idx)
@@ -53,12 +54,12 @@ def evaluateBound(dkf, dataset, mask, batch_size,S=2, normalization = 'frame', a
     return bound
 
 
-def impSamplingNLL(dkf, dataset, mask, batch_size, S = 2, normalization = 'frame'):
+def impSamplingNLL(dkf, dataset, mask, batch_size, S = 2, normalization = 'frame', cond_vals=None):
     """ Importance sampling based log likelihood """
     ll = 0
     start_time = time.time()
     N = dataset.shape[0]
-    dkf.resetDataset(dataset,mask)
+    dkf.resetDataset(dataset,mask,newU=cond_vals)
     for bnum,st_idx in enumerate(range(0,N,batch_size)):
         end_idx = min(st_idx+batch_size, N)
         idx_data= np.arange(st_idx,end_idx)
