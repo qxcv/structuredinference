@@ -2,6 +2,7 @@ import numpy as np
 
 from h36m_loader import load_data
 
+
 def loadDataset(use_cond=False):
     seq_length = 32
     seq_skip = 3
@@ -17,17 +18,17 @@ def loadDataset(use_cond=False):
 
     dataset = {}
 
-    dataset['train']      = train_X
+    dataset['train'] = train_X
     dataset['mask_train'] = np.ones(train_X.shape[:2])
 
-    dataset['valid']      = val_X
+    dataset['valid'] = val_X
     dataset['mask_valid'] = np.ones(val_X.shape[:2])
 
-    dataset['test']      = dataset['valid']
+    dataset['test'] = dataset['valid']
     dataset['mask_test'] = dataset['mask_valid']
 
     dataset['dim_observations'] = dim_observations
-    dataset['data_type']        = 'real'
+    dataset['data_type'] = 'real'
 
     dataset['h36m_mean'] = mean
     dataset['h36m_std'] = std

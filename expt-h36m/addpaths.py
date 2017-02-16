@@ -1,5 +1,4 @@
 #!/usr/bin/env python2
-
 """Initialises paths to data loading scripts."""
 
 import os
