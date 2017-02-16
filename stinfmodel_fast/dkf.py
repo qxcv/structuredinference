@@ -893,15 +893,31 @@ class DKF(BaseModel, object):
 
     #"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""#
 
-    def sample(self, nsamples=100, T=10):
+    def sample(self, nsamples=100, T=10, U=None):
         assert T > 1, 'Sample atleast 2 timesteps'
         #Initial sample
         z = np.random.randn(
             nsamples, 1, self.params['dim_stochastic']).astype(config.floatX)
         all_zs = [np.copy(z)]
+        assert (U is not None) == bool(self.params['use_cond']), \
+            "need U iff use_cond given"
+        if U is not None:
+            # U assumed to be [T, D]. Same U matrix is used for each generated
+            # set of samples.
+            dim_cond = self.params['dim_cond']
+            expected_shape = (T, dim_cond)
+            assert U.shape == expected_shape, \
+                "wrong U shape %r, should be %r" % (U.shape, expected_shape)
+            U = U.astype(config.floatX)
         for t in range(T - 1):
-            # TODO: Handle sampling
-            mu, logcov = self.transition_fxn(z)
+            if U is not None:
+                U_vec = U[t].reshape((1, -1))
+                stacked = np.stack([U_vec] * nsamples, axis=0)
+                # z is N*1*(dim_stochastic), so I'm making this N*1*(dim_cond)
+                assert stacked.shape == (nsamples, 1, dim_cond), stacked.shape
+                mu, logcov = self.transition_fxn(z, stacked)
+            else:
+                mu, logcov = self.transition_fxn(z)
             z = sampleGaussian(mu, logcov).astype(config.floatX)
             all_zs.append(np.copy(z))
         zvec = np.concatenate(all_zs, axis=1)
