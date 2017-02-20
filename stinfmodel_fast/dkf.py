@@ -277,8 +277,8 @@ class DKF(BaseModel, object):
                 tParams[k] = self.tWeights[k + '_W']
             mu = self.params_synthetic[self.params['dataset']]['obs_fxn'](
                 z, fxn_params=tParams)
-            cov = T.ones_like(
-                mu) * self.params_synthetic[self.params['dataset']]['obs_cov']
+            cov = T.ones_like(mu) * self.params_synthetic[self.params[
+                'dataset']]['obs_cov']
             cov.name = 'EmissionCov'
             return [mu, cov]
 
@@ -295,8 +295,10 @@ class DKF(BaseModel, object):
         for l in range(self.params['emission_layers']):
             if self.params['data_type'] == 'binary_nade' and l == self.params[
                     'emission_layers'] - 1:
-                hid = T.dot(hid, self.tWeights['p_emis_W_' + str(l)]
-                            ) + self.tWeights['p_emis_b_' + str(l)]
+                hid = T.dot(
+                    hid, self.tWeights['p_emis_W_' +
+                                       str(l)]) + self.tWeights['p_emis_b_' +
+                                                                str(l)]
             else:
                 hid = self._LinearNL(self.tWeights['p_emis_W_' + str(l)],
                                      self.tWeights['p_emis_b_' + str(l)], hid)
@@ -304,13 +306,13 @@ class DKF(BaseModel, object):
         if self.params['data_type'] == 'binary':
             if self.params['emission_type'] == 'res':
                 hid = T.dot(z, self.tWeights['p_res_W']) + T.dot(
-                    hid, self.
-                    tWeights['p_emis_W_ber']) + self.tWeights['p_emis_b_ber']
+                    hid, self.tWeights['p_emis_W_ber']) + self.tWeights[
+                        'p_emis_b_ber']
                 mean_params = T.nnet.sigmoid(hid)
             else:
                 mean_params = T.nnet.sigmoid(
-                    T.dot(hid, self.tWeights['p_emis_W_ber']) +
-                    self.tWeights['p_emis_b_ber'])
+                    T.dot(hid, self.tWeights['p_emis_W_ber']) + self.tWeights[
+                        'p_emis_b_ber'])
             return [mean_params]
         elif self.params['data_type'] == 'real':
             # for real vars, we use linear mean activation and log(1+exp(x))
@@ -324,14 +326,14 @@ class DKF(BaseModel, object):
                 hid_mu = res_out + T.dot(hid, self.tWeights['p_emis_W_mu']) \
                          + self.tWeights['p_emis_b_mu']
                 hid_var = T.nnet.softplus(
-                    T.dot(hid, self.tWeights['p_emis_W_var']) +
-                    self.tWeights['p_emis_b_var'])
+                    T.dot(hid, self.tWeights['p_emis_W_var']) + self.tWeights[
+                        'p_emis_b_var'])
             else:
-                hid_mu = T.dot(hid, self.tWeights['p_emis_W_mu']
-                               ) + self.tWeights['p_emis_b_mu']
+                hid_mu = T.dot(hid, self.tWeights[
+                    'p_emis_W_mu']) + self.tWeights['p_emis_b_mu']
                 hid_var = T.nnet.softplus(
-                    T.dot(hid, self.tWeights['p_emis_W_var']) +
-                    self.tWeights['p_emis_b_var'])
+                    T.dot(hid, self.tWeights['p_emis_W_var']) + self.tWeights[
+                        'p_emis_b_var'])
             return (hid_mu, hid_var)
         elif self.params['data_type'] == 'binary_nade':
             self._p('NADE observations')
@@ -418,9 +420,8 @@ class DKF(BaseModel, object):
 
             def mlp(inp, W1, b1, W2, b2, X_prev=None):
                 if X_prev is not None:
-                    h1 = self._LinearNL(
-                        W1, b1, T.concatenate(
-                            [inp, X_prev], axis=2))
+                    h1 = self._LinearNL(W1, b1,
+                                        T.concatenate([inp, X_prev], axis=2))
                 else:
                     h1 = self._LinearNL(W1, b1, inp)
                 h2 = T.dot(h1, W2) + b2
@@ -474,8 +475,8 @@ class DKF(BaseModel, object):
                 hid,
                 self.tWeights['p_trans_W_mu']) + self.tWeights['p_trans_b_mu']
             cov = T.nnet.softplus(
-                T.dot(hid, self.tWeights['p_trans_W_cov']) +
-                self.tWeights['p_trans_b_cov'])
+                T.dot(hid, self.tWeights['p_trans_W_cov']) + self.tWeights[
+                    'p_trans_b_cov'])
             return mu, cov
         else:
             assert False, 'Invalid Transition type: ' + str(
@@ -597,15 +598,15 @@ class DKF(BaseModel, object):
                 mu_1 = T.dot(hidl2r,
                              self.tWeights['q_W_mu']) + self.tWeights['q_b_mu']
                 cov_1 = T.nnet.softplus(
-                    T.dot(hidl2r, self.tWeights['q_W_cov']) +
-                    self.tWeights['q_b_cov'])
+                    T.dot(hidl2r, self.tWeights['q_W_cov']) + self.tWeights[
+                        'q_b_cov'])
                 hidr2l = r2l
                 mu_2 = T.dot(
                     hidr2l,
                     self.tWeights['q_W_mu_r']) + self.tWeights['q_b_mu_r']
                 cov_2 = T.nnet.softplus(
-                    T.dot(hidr2l, self.tWeights['q_W_cov_r']) +
-                    self.tWeights['q_b_cov_r'])
+                    T.dot(hidr2l, self.tWeights['q_W_cov_r']) + self.tWeights[
+                        'q_b_cov_r'])
                 mu = (mu_1 * cov_2 + mu_2 * cov_1) / (cov_1 + cov_2)
                 cov = (cov_1 * cov_2) / (cov_1 + cov_2)
                 z = mu + T.sqrt(cov) * eps
@@ -614,8 +615,8 @@ class DKF(BaseModel, object):
                 mu = T.dot(hid,
                            self.tWeights['q_W_mu']) + self.tWeights['q_b_mu']
                 cov = T.nnet.softplus(
-                    T.dot(hid, self.tWeights['q_W_cov']) +
-                    self.tWeights['q_b_cov'])
+                    T.dot(hid, self.tWeights['q_W_cov']) + self.tWeights[
+                        'q_b_cov'])
                 z = mu + T.sqrt(cov) * eps
             return z, mu, cov
         else:
@@ -782,8 +783,7 @@ class DKF(BaseModel, object):
         set_data_shapes = [self.dataset.shape, self.mask.shape]
         if 'use_cond' in self.params:
             self.cond_vals = theano.shared(
-                np.random.uniform(
-                    0, 1, size=(3, 5, self.params['dim_cond']))
+                np.random.uniform(0, 1, size=(3, 5, self.params['dim_cond']))
                 .astype(config.floatX))
             U_o = self.cond_vals[idx]
             U = U_o[:, :maxidx]
@@ -798,8 +798,7 @@ class DKF(BaseModel, object):
             start_temp = 1.0 / (self.params['dim_cond'] - 1)
             self._addWeights(
                 'cond_temp',
-                np.asarray(
-                    start_temp, dtype=config.floatX),
+                np.asarray(start_temp, dtype=config.floatX),
                 borrow=False)
         else:
             U = None
@@ -811,15 +810,12 @@ class DKF(BaseModel, object):
         #Add them to npWeights/tWeights to be tracked [do not have a prefix _W or _b so wont be diff.]
         self._addWeights(
             'lr',
-            np.asarray(
-                self.params['lr'], dtype=config.floatX),
+            np.asarray(self.params['lr'], dtype=config.floatX),
             borrow=False)
         self._addWeights(
-            'anneal', np.asarray(
-                0.01, dtype=config.floatX), borrow=False)
+            'anneal', np.asarray(0.01, dtype=config.floatX), borrow=False)
         self._addWeights(
-            'update_ctr', np.asarray(
-                1., dtype=config.floatX), borrow=False)
+            'update_ctr', np.asarray(1., dtype=config.floatX), borrow=False)
         lr = self.tWeights['lr']
         anneal = self.tWeights['anneal']
         iteration_t = self.tWeights['update_ctr']
@@ -856,8 +852,7 @@ class DKF(BaseModel, object):
                 #reg_type =self.params['reg_type'],
                 #reg_spec =self.params['reg_spec'],
                 #reg_value= self.params['reg_value'],
-                divide_grad=T.cast(
-                    X.shape[0], dtype=config.floatX),
+                divide_grad=T.cast(X.shape[0], dtype=config.floatX),
                 grad_norm=1.)
 
             #Add annealing updates
@@ -899,7 +894,8 @@ class DKF(BaseModel, object):
         ll_posterior = self._llGaussian(eval_z_q, eval_mu_q,
                                         eval_logcov_q).sum(2) * M
         ll_estimate = -1 * eval_CNLLvec + ll_prior.sum(
-            1, keepdims=True) - ll_posterior.sum(1, keepdims=True)
+            1, keepdims=True) - ll_posterior.sum(
+                1, keepdims=True)
 
         eval_inputs = [eval_z_q]
         if 'use_cond' in self.params:

@@ -5,7 +5,6 @@ import evaluate as DKF_evaluate
 import numpy as np
 from utils.misc import saveHDF5
 import time
-from theano import config
 
 
 def learn(dkf,
@@ -21,7 +20,8 @@ def learn(dkf,
           mask_eval=None,
           replicate_K=None,
           normalization='frame',
-          cond_vals=None):
+          cond_vals_train=None,
+          cond_vals_eval=None):
     """
                                             Train DKF
     """
@@ -30,38 +30,40 @@ def learn(dkf,
     assert len(dataset.shape) == 3, 'Expecting 3D tensor for data'
     assert dataset.shape[2] == dkf.params[
         'dim_observations'], 'Dim observations not valid'
-    assert ('use_cond' in dkf.params)==(cond_vals is not None), \
+    assert ('use_cond' in dkf.params) == (cond_vals_train is not None), \
         "should get cond_vals iff use_cond is given"
-    if cond_vals is not None:
-        assert cond_vals.ndim == 3, cond_vals.shape
-        assert cond_vals.shape[:2] == dataset.shape[:2], \
+    if cond_vals_train is not None:
+        assert (dataset_eval is None) == (cond_vals_eval is None), \
+            "need eval cond vals iff eval dataset given"
+        assert cond_vals_train.ndim == 3, cond_vals_train.shape
+        assert cond_vals_train.shape[:2] == dataset.shape[:2], \
             "expected cond_vals to be shape %r, but got shape %r" \
-            % (dataset.shape, cond_vals.shape)
+            % (dataset.shape, cond_vals_train.shape)
     N = dataset.shape[0]
     idxlist = range(N)
     batchlist = np.split(idxlist, range(batch_size, N, batch_size))
 
-    bound_train_list,bound_valid_list,bound_tsbn_list,nll_valid_list = [],[],[],[]
+    bound_train_list, bound_valid_list, bound_tsbn_list, nll_valid_list = [], [], [], []
     p_norm, g_norm, opt_norm = None, None, None
 
-    #Lists used to track quantities for synthetic experiments
-    mu_list_train, cov_list_train, mu_list_valid, cov_list_valid = [],[],[],[]
+    # Lists used to track quantities for synthetic experiments
+    mu_list_train, cov_list_train, mu_list_valid, cov_list_valid = [], [], [], []
     model_params = {}
 
-    #Start of training loop
+    # Start of training loop
     if 'synthetic' in dkf.params['dataset']:
         epfreq = 10
     else:
         epfreq = 1
 
-    #Set data
-    dkf.resetDataset(dataset, mask, newU=cond_vals)
+    # Set data
+    dkf.resetDataset(dataset, mask, newU=cond_vals_train)
     for epoch in range(epoch_start, epoch_end):
-        #Shuffle
+        # Shuffle
         if shuffle:
             np.random.shuffle(idxlist)
             batchlist = np.split(idxlist, range(batch_size, N, batch_size))
-        #Always shuffle order the batches are presented in
+        # Always shuffle order the batches are presented in
         np.random.shuffle(batchlist)
 
         start_time = time.time()
@@ -71,20 +73,20 @@ def learn(dkf,
             batch_bound, p_norm, g_norm, opt_norm, negCLL, KL, anneal = dkf.train_debug(
                 idx=batch_idx)
 
-            #Number of frames
+            # Number of frames
             M_sum = mask[batch_idx].sum()
-            #Correction for replicating batch
+            # Correction for replicating batch
             if replicate_K is not None:
                 batch_bound, negCLL, KL = batch_bound / replicate_K, negCLL / replicate_K, KL / replicate_K,
                 M_sum = M_sum / replicate_K
-            #Update bound
+            # Update bound
             bound += batch_bound
-            ### Display ###
+            # Display
             if epoch % epfreq == 0 and bnum % 10 == 0:
                 if normalization == 'frame':
                     bval = batch_bound / float(M_sum)
                 elif normalization == 'sequence':
-                    bval = batch_bound / float(X.shape[0])
+                    bval = batch_bound / float(dataset.shape[0])
                 else:
                     assert False, 'Invalid normalization'
                 dkf._p((
@@ -104,7 +106,7 @@ def learn(dkf,
             dkf._p(('(Ep %d) Bound: %.4f [Took %.4f seconds] ') %
                    (epoch, bound, end_time - start_time))
 
-        #Save at intermediate stages
+        # Save at intermediate stages
         if savefreq is not None and epoch % savefreq == 0:
             assert savefile is not None, 'expecting savefile'
             dkf._p(('Saving at epoch %d' % epoch))
@@ -119,7 +121,7 @@ def learn(dkf,
                     batch_size=batch_size,
                     additional=tmpMap,
                     normalization=normalization,
-                    cond_vals=cond_vals)))
+                    cond_vals=cond_vals_eval)))
                 bound_tsbn_list.append((epoch, tmpMap['tsbn_bound']))
                 nll_valid_list.append(
                     DKF_evaluate.impSamplingNLL(
@@ -128,7 +130,7 @@ def learn(dkf,
                         mask_eval,
                         batch_size,
                         normalization=normalization,
-                        cond_vals=cond_vals))
+                        cond_vals=cond_vals_eval))
             intermediate['valid_bound'] = np.array(bound_valid_list)
             intermediate['train_bound'] = np.array(bound_train_list)
             intermediate['tsbn_bound'] = np.array(bound_tsbn_list)
@@ -171,9 +173,9 @@ def learn(dkf,
                     intermediate[k + '_learned'] = np.array(
                         model_params[k]).squeeze()
             saveHDF5(savefile + '-EP' + str(epoch) + '-stats.h5', intermediate)
-            ### Update X in the computational flow_graph to point to training data
-            dkf.resetDataset(dataset, mask, newU=cond_vals)
-    #Final information to be collected
+            # Update X in the computational flow_graph to point to training data
+            dkf.resetDataset(dataset, mask, newU=cond_vals_train)
+    # Final information to be collected
     retMap = {}
     retMap['train_bound'] = np.array(bound_train_list)
     retMap['valid_bound'] = np.array(bound_valid_list)
@@ -238,7 +240,7 @@ def _syntheticProc(dkf, dataset, mask, dataset_eval, mask_eval):
         cov_train = np.exp(np.concatenate(alllogcov, axis=0)).mean(0)
         mu_valid = np.concatenate(allmus_v, axis=0).mean(0)
         cov_valid = np.exp(np.concatenate(alllogcov_v, axis=0)).mean(0)
-    #Extract the learned parameters w/in the generative model
+    # Extract the learned parameters w/in the generative model
     learned_params = {}
     for k in dkf.params_synthetic[dkf.params['dataset']]['params']:
         learned_params[k] = dkf.tWeights[k + '_W'].get_value()
