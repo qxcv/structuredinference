@@ -8,31 +8,24 @@ import h5py
 
 import numpy as np
 
-from p2d_loader import preprocess_sequence
+from p2d_loader import preprocess_sequence, extract_action_dataset
 
 VAL_FRAC = 0.2
 
 Data = namedtuple('Data', [
     'train_poses', 'train_actions', 'val_poses', 'val_actions', 'mean', 'std',
-    'action_names', 'train_vids', 'val_vids', 'data_path', 'parents'
+    'action_names', 'train_vids', 'val_vids', 'data_path', 'parents',
+    'train_aclass_ds', 'val_aclass_ds'
 ])
-
-
-def smooth_seqs(seqs):
-    """Smooth pose sequences to get rid of noise."""
-    # TODO: there are a few preprocessing ops which I want to perform:
-    # 1) Replace head position with midpoint of shoulders (should be much more stable)
-    # 2) Smooth the entire sequence over a few steps to get rid of high
-    #    frequency noise.
-    assert seqs.ndim == 3
-    raise NotImplementedError()
 
 
 def load_data(data_file, seq_length, seq_skip):
     train_pose_blocks = []
     train_action_blocks = []
+    train_aclass_ds = []
     val_pose_blocks = []
     val_action_blocks = []
+    val_aclass_ds = []
 
     # for deterministic val set split
     srng = np.random.RandomState(seed=8904511)
@@ -54,16 +47,26 @@ def load_data(data_file, seq_length, seq_skip):
 
         for vid_name in fp['seqs']:
             actions = fp['/seqs/' + vid_name + '/actions'].value
+            # `cert` chance of choosing correct action directly, `1 - cert`
+            # chance of choosing randomly (maybe gets correct action)
             cert = 0.6
             one_hot_acts = (1 - cert) * np.ones(
-                (len(actions), num_actions + 1)) / num_actions
+                (len(actions), num_actions + 1)) / (num_actions + 1)
             # XXX: This is an extremely hacky way of injecting noise :/
-            one_hot_acts[(range(len(actions)), actions)] = cert
+            one_hot_acts[(range(len(actions)), actions)] += cert
+            # actions should form prob dist., roughly
+            assert np.all(np.abs(1 - one_hot_acts.sum(axis=1)) < 0.001)
 
             poses = fp['/seqs/' + vid_name + '/poses'].value
             relposes = preprocess_sequence(poses, parents, smooth=True)
 
             assert len(relposes) == len(one_hot_acts)
+
+            aclass_list = extract_action_dataset(relposes, actions)
+            if vid_name in val_vids:
+                val_aclass_ds.extend(aclass_list)
+            else:
+                train_aclass_ds.extend(aclass_list)
 
             for i in range(len(relposes) - seq_skip * seq_length + 1):
                 pose_block = relposes[i:i + seq_skip * seq_length:seq_skip]
@@ -92,7 +95,7 @@ def load_data(data_file, seq_length, seq_skip):
 
     return Data(train_poses, train_actions, val_poses, val_actions, mean, std,
                 action_names, sorted(train_vids), sorted(val_vids), data_file,
-                parents)
+                parents, train_aclass_ds, val_aclass_ds)
 
 
 def loadDataset():
@@ -123,8 +126,12 @@ def loadDataset():
     dataset['val_cond_vals'] = data.val_actions
     dataset['test_cond_vals'] = data.val_actions
     dataset['p2d_action_names'] = data.action_names
-    
+
     dataset['p2d_parents'] = data.parents
+
+    # for action prediction
+    dataset['train_aclass_ds'] = data.train_aclass_ds
+    dataset['val_aclass_ds'] = data.val_aclass_ds
 
     print('Shapes of various things:')
     to_check = [
@@ -133,5 +140,7 @@ def loadDataset():
     ]
     for to_shape in to_check:
         print('%s: %s' % (to_shape, dataset[to_shape].shape))
+    for name in ['train_aclass_ds', 'val_aclass_ds']:
+        print('%s: %d (list)' % (name, len(dataset[name])))
 
     return dataset
