@@ -1,5 +1,4 @@
-"""Load a 2D pose dataset (probably IkeaDB) and (optionally) associated
-actions."""
+"""Load Penn Action poses and associated actions."""
 
 import numpy as np
 
@@ -7,15 +6,11 @@ from p2d_loader import load_p2d_data
 
 
 def loadDataset():
+    # TODO: see if I can fold this into IkeaDB data somehow
     seq_length = 32
     seq_skip = 3
-    data = load_p2d_data(
-        './ikea_action_data.h5',
-        seq_length,
-        seq_skip,
-        gap=1,
-        val_frac=0.2,
-        add_noise=0.6)
+    data = load_p2d_data('./penn_dataset.h5', seq_length, seq_skip,
+                         gap=17, val_frac=0.2, add_noise=None)
 
     dim_observations = data.train_poses.shape[2]
 
