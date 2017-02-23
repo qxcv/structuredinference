@@ -35,7 +35,7 @@ class DKF(BaseModel, object):
             assert False, 'Expecting to have params_synthetic as an attribute in DKF class'
         assert self.params[
             'nonlinearity'] != 'maxout', 'Maxout nonlinearity not supported'
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             self.params['transition_type'] == 'simple_gated', \
                 'Only simple gated transition supports conditioning (dim_cond)'
 
@@ -64,7 +64,7 @@ class DKF(BaseModel, object):
         extra_dims = 0
         if self.params['use_prev_input']:
             extra_dims += self.params['dim_observations']
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             # extra conditioning input at each time step (e.g. a
             # subsequence class)
             extra_dims += self.params['dim_cond']
@@ -197,7 +197,7 @@ class DKF(BaseModel, object):
 
         #Initial embedding for the inputs
         DIM_INPUT = self.params['dim_observations']
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             DIM_INPUT += self.params['dim_cond']
         RNN_SIZE = self.params['rnn_size']
 
@@ -433,7 +433,7 @@ class DKF(BaseModel, object):
                 prev_input = T.concatenate(
                     [T.zeros_like(X[:, [0], :]), X[:, :-1, :]], axis=1)
                 X_prev_list.append(prev_input)
-            if 'use_cond' in self.params:
+            if self.params['use_cond']:
                 U_sample = self._gumbel_softmax(U)
                 X_prev_list.append(U_sample)
             if X_prev_list:
@@ -649,7 +649,7 @@ class DKF(BaseModel, object):
 
     def _qEmbeddingLayer(self, X, U=None):
         """ Embed for q """
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             U_samples = self._gumbel_softmax(U)
             P = T.concatenate((X, U_samples), axis=2)
         else:
@@ -747,7 +747,7 @@ class DKF(BaseModel, object):
             newMask=newM.astype(config.floatX))
         assert (newU is not None) == bool(self.params['use_cond']), \
             'need U iff use_cond given'
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             kwargs['newU'] = newU
         self.setData(**kwargs)
         if not quiet:
@@ -781,7 +781,7 @@ class DKF(BaseModel, object):
         set_data_inputs = [newX, newMask]
         set_data_updates = [(self.dataset, newX), (self.mask, newMask)]
         set_data_shapes = [self.dataset.shape, self.mask.shape]
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             self.cond_vals = theano.shared(
                 np.random.uniform(0, 1, size=(3, 5, self.params['dim_cond']))
                 .astype(config.floatX))
@@ -898,7 +898,7 @@ class DKF(BaseModel, object):
                 1, keepdims=True)
 
         eval_inputs = [eval_z_q]
-        if 'use_cond' in self.params:
+        if self.params['use_cond']:
             eval_inputs.append(U)
         self.likelihood = theano.function(
             fxn_inputs,

@@ -30,7 +30,7 @@ def learn(dkf,
     assert len(dataset.shape) == 3, 'Expecting 3D tensor for data'
     assert dataset.shape[2] == dkf.params[
         'dim_observations'], 'Dim observations not valid'
-    assert ('use_cond' in dkf.params) == (cond_vals_train is not None), \
+    assert bool(dkf.params['use_cond']) == (cond_vals_train is not None), \
         "should get cond_vals iff use_cond is given"
     if cond_vals_train is not None:
         assert (dataset_eval is None) == (cond_vals_eval is None), \

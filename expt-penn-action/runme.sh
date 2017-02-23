@@ -12,5 +12,4 @@ fi
 # better idea just to use more of the information I have (instead of samples
 # from latent transition distribution, concatenate mean, covariance, and
 # deterministic LSTM state).
-exec python2.7 $extra_args train.py -vm L -cond -infm structured -ds 10 \
-    -dh 50 -uid penn-acts
+exec python2.7 $extra_args train.py -vm L -infm structured -ds 10 -dh 50 -uid penn-acts
