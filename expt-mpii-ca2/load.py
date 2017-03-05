@@ -10,7 +10,8 @@ def loadDataset():
     seq_skip = 3
     data = load_p2d_data('./mpii_ca2.h5', seq_length, seq_skip,
                          gap=3, val_frac=0.2, add_noise=None,
-                         load_actions=False)
+                         load_actions=False,
+                         completion_length=32)
 
     dim_observations = data["train_poses"].shape[2]
 
@@ -37,6 +38,9 @@ def loadDataset():
     # dataset['p2d_action_names'] = data["action_names"]
 
     dataset['p2d_parents'] = data["parents"]
+
+    dataset['p2d_train_completions'] = data['train_completions']
+    dataset['p2d_val_completions'] = data['val_completions']
 
     # for action prediction
     # dataset['train_aclass_ds'] = data["train_aclass_ds"]

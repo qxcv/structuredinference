@@ -34,3 +34,4 @@ expt-polyphonic/*.txt
 datasets/tmp_MOCAP*.mat
 *.txt
 .#*
+*.json
