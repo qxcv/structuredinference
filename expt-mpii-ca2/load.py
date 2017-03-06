@@ -7,7 +7,8 @@ from p2d_loader import load_p2d_data
 
 def loadDataset():
     seq_length = 32
-    seq_skip = 3
+    # skip of 1 because it's already downsapmled
+    seq_skip = 1
     data = load_p2d_data('./mpii_ca2.h5', seq_length, seq_skip,
                          gap=3, val_frac=0.2, add_noise=None,
                          load_actions=False,
