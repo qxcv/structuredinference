@@ -48,8 +48,8 @@ def loadDataset():
     dataset['val_aclass_ds'] = data["val_aclass_ds"]
 
     # for sequence completion
-    dataset['train_completions'] = data['train_completions']
-    dataset['val_completions'] = data['val_completions']
+    dataset['p2d_train_completions'] = data['train_completions']
+    dataset['p2d_val_completions'] = data['val_completions']
 
     print('Shapes of various things:')
     to_check_shape = [
@@ -59,8 +59,8 @@ def loadDataset():
     for to_shape in to_check_shape:
         print('%s: %s' % (to_shape, dataset[to_shape].shape))
     to_check_len = [
-        'train_aclass_ds', 'val_aclass_ds', 'train_completions',
-        'val_completions'
+        'train_aclass_ds', 'val_aclass_ds', 'p2d_train_completions',
+        'p2d_val_completions'
     ]
     for name in to_check_len:
         print('%s: %d (list)' % (name, len(dataset[name])))
