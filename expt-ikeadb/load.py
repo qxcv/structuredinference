@@ -7,11 +7,12 @@ from p2d_loader import P2DDataset
 def loadDataset():
     seq_length = 32
     seq_skip = 3
+    gap = 4
     data = P2DDataset(
         './ikea_action_data.h5',
         seq_length,
         seq_skip,
-        gap=1,
+        gap=gap,
         val_frac=0.2,
         completion_length=256,
         have_actions=True,

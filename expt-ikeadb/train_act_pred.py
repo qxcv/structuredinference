@@ -33,14 +33,13 @@ def make_model(seq_len, num_channels, num_actions):
     model.add(Dropout(0.2))
 
     model.add(
-        Bidirectional(
             GRU(50,
                 return_sequences=False,
                 dropout_W=0.2,
                 dropout_U=0.2,
                 W_regularizer=l2(0.001),
                 activation='relu',
-                init='uniform')))
+                init='uniform'))
     model.add(Dropout(0.2))
 
     model.add(Dense(50, W_regularizer=l2(0.001), activation='relu'))
@@ -73,9 +72,6 @@ if __name__ == '__main__':
     }
     db = dataset['p2d']
     old_act_names = db.action_names
-    # TODO: feed in some of previous sequence as well. May be good for context
-    # (network can learn which actions follow which, what transitions look
-    # like, etc.)
     _, train_aclass_ds \
         = merge_actions(dataset['train_aclass_ds'], merge_map, old_act_names)
     aclass_target_names, val_aclass_ds \
@@ -88,6 +84,9 @@ if __name__ == '__main__':
     print('Actions: ' + ', '.join(aclass_target_names))
     train_X, train_Y = to_XY(train_aclass_ds_bal, n_actions)
     val_X, val_Y = to_XY(val_aclass_ds_bal, n_actions)
+
+    print('Action balance (train): ', train_Y.sum(axis=0))
+    print('Action balance (val): ', val_Y.sum(axis=0))
 
     checkpoint_dir = './chkpt-aclass/'
     try:
