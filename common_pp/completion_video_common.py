@@ -28,9 +28,10 @@ def alignment_constant(rec_x, true_x):
     # bothered finding it right now. Instead, I'm centring both, scaling until
     # they match, then returning alpha and beta required to do the scaling
     # for other samples.
-    # expect 2*j
+    # expect single poses (2*j)
     assert true_x.shape == rec_x.shape
     assert true_x.shape[0] == 2 and rec_x.shape[0] == 2
+    assert true_x.ndim == 2 and rec_x.ndim == 2
     rec_cen = rec_x - rec_x.mean(axis=1)[:, None]
     true_cen = true_x - true_x.mean(axis=1)[:, None]
     objective = lambda a: np.sqrt(np.sum((rec_cen * a - true_cen).flatten() ** 2))
