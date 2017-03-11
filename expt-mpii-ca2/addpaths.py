@@ -18,7 +18,7 @@ except ImportError:
     # need to add to PATH
     this_dir = os.path.dirname(os.path.abspath(__file__))
     above = os.path.join(this_dir, '..')
-    print(above)
+    # print(above)
     sys.path.append(above)
 
     # should not fail now that we've added it to PATH

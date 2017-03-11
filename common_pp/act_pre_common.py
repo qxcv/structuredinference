@@ -19,7 +19,7 @@ def one_hot_max(array):
     return one_hot_cat(match_inds, array.shape[-1])
 
 
-def balance_aclass_ds(aclass_ds, act_names):
+def balance_aclass_ds(aclass_ds, act_names, target_func=None):
     # find appropriate number of samples for a single action class,
     # then trim "heavy" action classes to have no more than
     # that number of samples
@@ -28,7 +28,9 @@ def balance_aclass_ds(aclass_ds, act_names):
         _, class_num = item
         class_map[ds_idx, class_num] = 1
     support = class_map.sum(axis=0)
-    support_target = int(np.min(support))
+    if target_func is None:
+        target_func = np.min
+    support_target = int(target_func(support))
     to_keep = np.zeros((len(aclass_ds), ))
     for class_num in range(len(act_names)):
         if support[class_num] <= support_target:

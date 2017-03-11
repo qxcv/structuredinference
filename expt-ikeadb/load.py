@@ -20,8 +20,7 @@ def loadDataset():
 
     dataset = {}
 
-    dim_observations = data.dim_obs
-    dataset['dim_observations'] = dim_observations = data.dim_obs
+    dataset['dim_observations'] = data.dim_obs
     dataset['data_type'] = 'real'
     dataset['p2d'] = data
 
