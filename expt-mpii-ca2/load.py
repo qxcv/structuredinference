@@ -9,8 +9,9 @@ def loadDataset():
     seq_length = 32
     # skip of 1 because it's already downsapmled
     seq_skip = 1
+    gap = 3
     data = load_p2d_data('./mpii_ca2.h5', seq_length, seq_skip,
-                         gap=3, val_frac=0.2, add_noise=None,
+                         gap=gap, val_frac=0.2, add_noise=None,
                          load_actions=False,
                          completion_length=32)
 

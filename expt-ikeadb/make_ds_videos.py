@@ -15,15 +15,13 @@ import matplotlib.pyplot as plt
 
 from scipy.io import loadmat
 
-from scipy.optimize import fmin
-
 import addpaths  # noqa
 from plot_2d_seqs import draw_poses
-from common_pp.completion_video_common import load_sorted_paths, alignment_constant
+from common_pp.completion_video_common import load_sorted_paths
 
 H5_PATH = './ikea_action_data.h5'
 DB_PATH = '/data/home/cherian/IkeaDataset/IkeaClipsDB_withactions.mat'
-DB_PATH = '/home/sam/sshfs/paloalto' + DB_PATH  #  XXX
+DB_PATH = '/home/sam/sshfs/paloalto' + DB_PATH  # XXX
 FRAME_DIR = '/data/home/cherian/IkeaDataset/Frames/'
 FRAME_DIR = '/home/sam/sshfs/paloalto' + FRAME_DIR  # XXX
 POSE_DIR = '/home/sam/sshfs/paloalto/etc/cpm-keras/ikea-mat-poses/'  # XXX
