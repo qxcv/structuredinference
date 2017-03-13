@@ -1,8 +1,6 @@
 import os
 import json
 
-import numpy as np
-
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import Sequential
 from keras.layers import Bidirectional, GRU, Dropout, Dense, GaussianNoise
