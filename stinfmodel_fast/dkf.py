@@ -4,7 +4,7 @@ from collections import OrderedDict
 import numpy as np
 import sys, time, os, gzip, theano, math
 sys.path.append('../')
-from theano import config
+from theano import config, printing
 theano.config.compute_test_value = 'warn'
 from theano.printing import pydotprint
 import theano.tensor as T
@@ -420,10 +420,14 @@ class DKF(BaseModel, object):
 
             def mlp(inp, W1, b1, W2, b2, X_prev=None):
                 if X_prev is not None:
-                    h1 = self._LinearNL(W1, b1,
-                                        T.concatenate([inp, X_prev], axis=2))
+                    cat_res = T.concatenate([inp, X_prev], axis=2)
+                    h1 = self._LinearNL(W1, b1, cat_res)
                 else:
                     h1 = self._LinearNL(W1, b1, inp)
+                # XXX: the activations are exploding here sometimes. Likely due
+                # to activation inside the MLP for h1. Making it a sigmoid
+                # instead of a ReLU will likely fix the problem (requires
+                # _linearNL changes).
                 h2 = T.dot(h1, W2) + b2
                 return h2
 
@@ -434,7 +438,10 @@ class DKF(BaseModel, object):
                     [T.zeros_like(X[:, [0], :]), X[:, :-1, :]], axis=1)
                 X_prev_list.append(prev_input)
             if self.params['use_cond']:
-                U_sample = self._gumbel_softmax(U)
+                if self.params.get('gumbel_softmax_cond', False):
+                    U_sample = self._gumbel_softmax(U)
+                else:
+                    U_sample = U
                 X_prev_list.append(U_sample)
             if X_prev_list:
                 X_prev = T.concatenate(X_prev_list, axis=2)
@@ -639,18 +646,13 @@ class DKF(BaseModel, object):
 
         return rv
 
-    def _straight_through(self, U):
-        """Instead of using Gumbel-softmax approximation, this function simply
-        samples from the given discrete distributions."""
-        # TODO: Replace all instances of _gumbel_softmax with
-        # _straight_through. The hard part is implementing this: I don't know
-        # how to make it part of the computation graph.
-        raise NotImplementedError()
-
     def _qEmbeddingLayer(self, X, U=None):
         """ Embed for q """
         if self.params['use_cond']:
-            U_samples = self._gumbel_softmax(U)
+            if self.params.get('gumbel_softmax_cond', False):
+                U_samples = self._gumbel_softmax(U)
+            else:
+                U_samples = U
             P = T.concatenate((X, U_samples), axis=2)
         else:
             P = X
@@ -795,7 +797,8 @@ class DKF(BaseModel, object):
                                    ).astype(config.floatX))
         X_o = self.dataset[idx]
         M_o = self.mask[idx]
-        maxidx = T.cast(M_o.sum(1).max(), 'int64')
+        # should be 1D
+        maxidx = T.cast(M_o.any(axis=2).sum(axis=1).max(axis=0), 'int64')
         X = X_o[:, :maxidx, :]
         M = M_o[:, :maxidx]
         M2D = M.all(axis=2).astype(config.floatX)
@@ -956,6 +959,7 @@ class DKF(BaseModel, object):
         # Initial sample
         z = np.random.randn(
             nsamples, 1, self.params['dim_stochastic']).astype(config.floatX)
+        assert not np.any(np.isnan(z))
         all_zs = [np.copy(z)]
         assert (U is not None) == bool(self.params['use_cond']), \
             "need U iff use_cond given"
@@ -967,21 +971,27 @@ class DKF(BaseModel, object):
             assert U.shape == expected_shape, \
                 "wrong U shape %r, should be %r" % (U.shape, expected_shape)
             U = U.astype(config.floatX)
+            assert not np.any(np.isnan(U))
         for t in range(T - 1):
             if U is not None:
                 U_vec = U[t].reshape((1, -1))
                 stacked = np.stack([U_vec] * nsamples, axis=0)
                 # z is N*1*(dim_stochastic), so I'm making this N*1*(dim_cond)
                 assert stacked.shape == (nsamples, 1, dim_cond), stacked.shape
+                assert not np.any(np.isnan(stacked))
                 mu, logcov = self.transition_fxn(z, stacked)
             else:
                 mu, logcov = self.transition_fxn(z)
+            assert not np.any(np.isnan(mu))
+            assert not np.any(np.isnan(logcov))
             z = sampleGaussian(mu, logcov).astype(config.floatX)
+            assert not np.any(np.isnan(z))
             all_zs.append(np.copy(z))
         zvec = np.concatenate(all_zs, axis=1)
         if self.params['emission_type'] != 'conditional':
             # easy case: independently sample output at each time step
             X = self.emission_fxn(zvec)
+            assert not np.any(np.isnan(X))
         else:
             # hard case: need to collect x at each time step so that we can
             # pass it back in to conditional predictor
@@ -998,6 +1008,7 @@ class DKF(BaseModel, object):
                 # Heck, is there any implicit recurrent state (i.e. anything
                 # other than z)?
                 X[:, t:t + 1] = self.emission_fxn(z, X_in)
+                assert not np.any(np.isnan(X))
         return X, zvec
 
     # """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""#
