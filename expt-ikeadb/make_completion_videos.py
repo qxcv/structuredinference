@@ -8,27 +8,22 @@ import os
 import re
 
 import h5py
-
 import numpy as np
-
 import matplotlib.pyplot as plt
-
 from scipy.io import loadmat
-
-from scipy.optimize import fmin
 
 import addpaths  # noqa
 from plot_2d_seqs import draw_poses
 from common_pp.completion_video_common import load_sorted_paths, alignment_constant
 
 FRAME_DIR = '/data/home/cherian/IkeaDataset/Frames/'
-FRAME_DIR = '/home/sam/sshfs/paloalto' + FRAME_DIR  # XXX
 DB_PATH = '/data/home/cherian/IkeaDataset/IkeaClipsDB_withactions.mat'
-DB_PATH = '/home/sam/sshfs/paloalto' + DB_PATH  #  XXX
-POSE_DIR = '/home/sam/sshfs/paloalto/etc/cpm-keras/ikea-mat-poses/'  # XXX
+POSE_DIR = '/home/sam/etc/cpm-keras/ikea-mat-poses/'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('completion_path', help='path to .json completion file')
+parser.add_argument('--vid-dir', type=str, default=None,
+    help='save videos to this directory instead of showing poses')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -66,13 +61,13 @@ if __name__ == '__main__':
 
     pose_mat_path = os.path.join(POSE_DIR, 'pose_clip_%d.mat' % tmp2_id)
     pose_mat = loadmat(pose_mat_path, squeeze_me=True)
-    ref_pose = pose_mat['pose'][1:8, :, 0].astype('float').T
-    alpha, beta = alignment_constant(pose_seqs[0, 0], ref_pose)
+    # ref_pose = pose_mat['pose'][1:8, :, 0].astype('float').T
+    # alpha, beta = alignment_constant(pose_seqs[0, 0], ref_pose)
 
-    pose_seqs = pose_seqs * alpha + beta[None, None, :, None]
+    # pose_seqs = pose_seqs * alpha + beta[None, None, :, None]
 
     # important not to let return value be gc'd (anims won't run otherwise!)
-    anims = draw_poses(
+    anim = draw_poses(
         'Completed poses in %s' % args.completion_path,
         d['parents'],
         pose_seqs,
@@ -80,4 +75,24 @@ if __name__ == '__main__':
         subplot_titles=seq_names,
         fps=50 / 9.0,
         crossover=d['crossover_time'])
-    plt.show()
+    if args.vid_dir is not None:
+        # save video
+        print('Saving video')
+        try:
+            os.makedirs(args.vid_dir)
+        except FileExistsError:
+            pass
+
+        bn = os.path.basename(args.completion_path).rsplit('.')[0]
+        key = d['vid_name'] + '-' + bn
+        anim.save(os.path.join(args.vid_dir, key + '.mp4'),
+                  writer='avconv',
+                  # no idea what bitrate defaults to, but empircally it seems
+                  # to be around 1000 (?)
+                  bitrate=3000,
+                  # dpi defaults to 300
+                  dpi=300,
+                  fps=50/3.0)
+    else:
+        print('Showing sequence')
+        plt.show()

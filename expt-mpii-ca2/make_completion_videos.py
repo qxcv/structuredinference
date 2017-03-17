@@ -18,11 +18,14 @@ from common_pp.completion_video_common import load_sorted_paths, \
     alignment_constant
 
 FRAME_DIR = '/data/home/cherian/MPII/Cheng-MPII-Pose-Action/frames/'
-FRAME_DIR = '/home/sam/sshfs/paloalto' + FRAME_DIR  # XXX
-POSE_DIR = '/home/sam/sshfs/paloalto/etc/cpm-keras/mpii-ca2-mat-poses'  # XXX
+# FRAME_DIR = '/home/sam/sshfs/paloalto' + FRAME_DIR  # XXX
+# POSE_DIR = '/home/sam/sshfs/paloalto/etc/cpm-keras/mpii-ca2-mat-poses'  # XXX
+POSE_DIR = '/home/sam/etc/cpm-keras/mpii-ca2-mat-poses'
 
 parser = argparse.ArgumentParser()
 parser.add_argument('completion_path', help='path to .json completion file')
+parser.add_argument('--vid-dir', type=str, default=None,
+    help='save videos to this directory instead of showing poses')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -47,7 +50,7 @@ if __name__ == '__main__':
     pose_seqs = pose_seqs * alpha + beta[None, None, :, None]
 
     # important not to let return value be gc'd (anims won't run otherwise!)
-    anims = draw_poses(
+    anim = draw_poses(
         'Completed poses in %s' % args.completion_path,
         d['parents'],
         pose_seqs,
@@ -55,4 +58,24 @@ if __name__ == '__main__':
         subplot_titles=seq_names,
         fps=50 / 9.0,
         crossover=d['crossover_time'])
-    plt.show()
+    if args.vid_dir is not None:
+        # save video
+        print('Saving video')
+        try:
+            os.makedirs(args.vid_dir)
+        except FileExistsError:
+            pass
+
+        bn = os.path.basename(args.completion_path).rsplit('.')[0]
+        key = d['vid_name'] + '-' + bn
+        anim.save(os.path.join(args.vid_dir, key + '.mp4'),
+                  writer='avconv',
+                  # no idea what bitrate defaults to, but empircally it seems
+                  # to be around 1000 (?)
+                  bitrate=3000,
+                  # dpi defaults to 300
+                  dpi=300,
+                  fps=50/3.0)
+    else:
+        print('Showing sequence')
+        plt.show()

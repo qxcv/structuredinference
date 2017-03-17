@@ -35,3 +35,5 @@ datasets/tmp_MOCAP*.mat
 *.txt
 .#*
 *.json
+vids-with*/
+*.mp4
