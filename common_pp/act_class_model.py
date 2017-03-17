@@ -12,7 +12,7 @@ from common_pp.act_pre_common import merge_actions, to_XY, balance_aclass_ds
 def make_model(seq_len, num_channels, num_actions):
     # model from Anoop
     model = Sequential()
-    model.add(GaussianNoise(0.05, input_shape=(seq_len, num_channels)))
+    model.add(GaussianNoise(0.05, input_shape=(seq_len, num_channels), name='gauss1'))
     model.add(
         Bidirectional(
             GRU(50,
@@ -21,8 +21,8 @@ def make_model(seq_len, num_channels, num_actions):
                 dropout_U=0.2,
                 W_regularizer=l2(0.001),
                 activation='relu',
-                init='uniform')))
-    model.add(Dropout(0.2))
+                init='uniform', name='gru1'), name='bidi1'))
+    model.add(Dropout(0.2, name='drop1'))
 
     model.add(
             GRU(50,
@@ -31,16 +31,16 @@ def make_model(seq_len, num_channels, num_actions):
                 dropout_U=0.2,
                 W_regularizer=l2(0.001),
                 activation='relu',
-                init='uniform'))
-    model.add(Dropout(0.2))
+                init='uniform', name='gru2'))
+    model.add(Dropout(0.2, name='drop2'))
 
-    model.add(Dense(50, W_regularizer=l2(0.001), activation='relu'))
-    model.add(Dropout(0.3))
+    model.add(Dense(50, W_regularizer=l2(0.001), activation='relu', name='dense1'))
+    model.add(Dropout(0.3, name='drop3'))
 
-    model.add(Dense(50, W_regularizer=l2(0.001)))
-    model.add(Dropout(0.3))
+    model.add(Dense(50, W_regularizer=l2(0.001), name='dense2'))
+    model.add(Dropout(0.3, name='drop4'))
 
-    model.add(Dense(num_actions, activation='softmax'))
+    model.add(Dense(num_actions, activation='softmax', name='dense3'))
     model.compile(
         loss='categorical_crossentropy',
         optimizer='adam',

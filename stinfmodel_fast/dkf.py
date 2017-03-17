@@ -957,6 +957,8 @@ class DKF(BaseModel, object):
     def sample(self, nsamples=100, T=10, U=None):
         assert T > 1, 'Sample atleast 2 timesteps'
         # Initial sample
+        # TODO: if I'm using a conditional model then initial sample should be
+        # conditional, too.
         z = np.random.randn(
             nsamples, 1, self.params['dim_stochastic']).astype(config.floatX)
         assert not np.any(np.isnan(z))
