@@ -20,7 +20,8 @@ def loadDataset():
         have_actions=True,
         completion_length=256,
         aclass_full_length=96,
-        aclass_act_length=8)
+        aclass_act_length=8,
+        head_vel=False)
 
     # TODO: factor this out into common code (it's shared with IkeaDB and will
     # probably end up shared with Penn)

@@ -16,7 +16,8 @@ def loadDataset():
         val_frac=0.2,
         completion_length=256,
         have_actions=True,
-        remove_head=True)
+        remove_head=True,
+        head_vel=False)
 
     dataset = {}
 
