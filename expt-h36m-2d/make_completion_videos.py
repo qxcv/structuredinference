@@ -73,7 +73,7 @@ if __name__ == '__main__':
         print('Saving video')
         try:
             os.makedirs(args.vid_dir)
-        except FileExistsError:
+        except OSError:
             pass
 
         bn = os.path.basename(args.completion_path).rsplit('.')[0]

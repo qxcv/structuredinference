@@ -7,5 +7,5 @@ if [ ! -z "$@" ]; then
         extra_args="$extra_args -m ipdb"
     fi
 fi
-exec python2.7 $extra_args train.py -vm L -cond -infm structured -ds 10 \
+exec python2.7 $extra_args train.py -vm LR -infm structured -ds 50 \
     -dh 50 -uid ikeadb-no-acts

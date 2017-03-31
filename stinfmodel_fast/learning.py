@@ -89,6 +89,15 @@ def learn(dkf,
                     bval = batch_bound / float(dataset.shape[0])
                 else:
                     assert False, 'Invalid normalization'
+                # See
+                # https://github.com/qxcv/theanomodels/blob/master/utils/optimizer.py
+                # to understand |w|, |dw|, |w_opt|.
+                #
+                # |w| (p_norm) is l2 norm of parameter values
+                # |dw| (g_norm) is l2 norm of gradient (it gets standardised, so it
+                #     doesn't givem much info)
+                # |w_opt| (opt_norm) is (I think) the l2 norm of the parameter
+                #     update vector
                 dkf._p((
                     'Bnum: %d, Batch Bound: %.4f, |w|: %.4f, |dw|: %.4f, |w_opt|: %.4f'
                 ) % (bnum, bval, p_norm, g_norm, opt_norm))
