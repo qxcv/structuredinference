@@ -7,7 +7,7 @@ from load import loadDataset
 
 # This will contain a hashmap where the parameters correspond to the default
 # ones modified by any command line options given to this script
-from parse_args_dkf import params
+from parse_args_dkf import parse; params = parse()
 
 # Some utility functions from theanomodels
 from utils.misc import (removeIfExists, createIfAbsent, mapPrint, saveHDF5,

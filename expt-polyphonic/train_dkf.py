@@ -1,7 +1,7 @@
 import os,time,sys
 sys.path.append('../')
 from datasets.load import loadDataset
-from parse_args_dkf import params 
+from parse_args_dkf import parse; params = parse() 
 from utils.misc import removeIfExists,createIfAbsent,mapPrint,saveHDF5,displayTime,getLowestError
 
 if params['dataset']=='':

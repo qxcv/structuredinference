@@ -1055,7 +1055,7 @@ class DKF(BaseModel, object):
 
 if __name__ == '__main__':
     """ use this to check compilation for various options"""
-    from parse_args_dkf import params
+    from parse_args_dkf import parse; params = parse()
     if params['use_nade']:
         params['data_type'] = 'binary_nade'
     else:
