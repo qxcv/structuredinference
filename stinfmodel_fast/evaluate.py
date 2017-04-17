@@ -115,7 +115,11 @@ def sample(dkf, nsamples=100, T=10, additional={}):
                                   Sample from Generative Model
     """
     assert T > 1, 'Sample atleast 2 timesteps'
+    assert False, "I haven't touched this in ages; use DKF.sample() instead"
     #Initial sample
+    # XXX: replace this with a conditional sample, if necessary heck, it's
+    # probably better just to throw this away and use dkf.sample instead (which
+    # actually works).
     z = np.random.randn(nsamples, 1,
                         dkf.params['dim_stochastic']).astype(config.floatX)
     all_zs = [np.copy(z)]

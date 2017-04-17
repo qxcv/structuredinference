@@ -59,6 +59,8 @@ class DKF(BaseModel, object):
 
         DIM_HIDDEN = self.params['dim_hidden']
         DIM_STOCHASTIC = self.params['dim_stochastic']
+        if self.params['use_cond']:
+            DIM_COND = self.params['dim_cond']
 
         # extra dimensions for conditioning transition function
         extra_dims = 0
@@ -67,7 +69,15 @@ class DKF(BaseModel, object):
         if self.params['use_cond']:
             # extra conditioning input at each time step (e.g. a
             # subsequence class)
-            extra_dims += self.params['dim_cond']
+            extra_dims += DIM_COND
+
+            # for mu and cov at time 0
+            npWeights['p_z_init_mu_W'] = self._getWeight(
+                (DIM_COND, DIM_STOCHASTIC))
+            npWeights['p_z_init_mu_b'] = self._getWeight((DIM_STOCHASTIC, ))
+            npWeights['p_z_init_cov_W'] = self._getWeight(
+                (DIM_COND, DIM_STOCHASTIC))
+            npWeights['p_z_init_cov_b'] = self._getWeight((DIM_STOCHASTIC, ))
 
         if self.params['transition_type'] == 'mlp':
             DIM_HIDDEN_TRANS = DIM_HIDDEN * 2
@@ -287,6 +297,8 @@ class DKF(BaseModel, object):
             hid = z
         elif self.params['emission_type'] == 'conditional':
             self._p('EMISSION TYPE: conditional')
+            # TODO: if this doesn't work then you should make it a gated unit
+            # (like a GRU)
             X_prev = T.concatenate(
                 [T.zeros_like(X[:, [0], :]), X[:, :-1, :]], axis=1)
             hid = T.concatenate([z, X_prev], axis=2)
@@ -631,6 +643,10 @@ class DKF(BaseModel, object):
 
     def _gumbel_softmax(self, U):
         """Return Gumbel-Softmax samples of some categorical distribution."""
+        assert False, "Are you sure you meant to use this? Applying it to " \
+            "an input layer (its original purpose) is not useful because " \
+            "you don't need to backprop through input layers. Right now " \
+            "2017-03-27) I don't know of anywhere else it can be used."
         # turn uni(0, 1) into gumbel(0, 1)
         uni_rand = self.srng.uniform(low=0., high=1., size=U.shape)
         gumb_rand = -T.log(-T.log(uni_rand + 1e-10) + 1e-20)
@@ -659,6 +675,36 @@ class DKF(BaseModel, object):
         return self._LinearNL(self.tWeights['q_W_input_0'],
                               self.tWeights['q_b_input_0'], P)
 
+    def _getInitPriorFxn(self, X, U=None):
+        # gives mu and cov at t = 0
+        # v XXX: Disabled because I want to keep using class before upgrade.
+        # Fix this!
+        # if not self.params['use_cond']:
+        if True:
+            # v XXX: also remove this once done, I guess
+            # assert U is None, "shouldn't be getting a U w/ non-cond model"
+
+            # constant because we have no other information to use
+            mu_prior0 = T.alloc(
+                np.asarray(0.).astype(config.floatX), X.shape[0], 1,
+                self.params['dim_stochastic'])
+            cov_prior0 = T.alloc(
+                np.asarray(1.).astype(config.floatX), X.shape[0], 1,
+                self.params['dim_stochastic'])
+        else:
+            assert U is not None, "need U with use_cond == True"
+
+            # U-conditioned with single-layer network; if U is one-hot then
+            # this allows us to learn different mu/cov for each value.
+            p_mu_W = self.tWeights['p_z_init_mu_W']
+            p_mu_b = self.tWeights['p_z_init_mu_b']
+            p_cov_W = self.tWeights['p_z_init_cov_W']
+            p_cov_b = self.tWeights['p_z_init_cov_b']
+            mu_prior0 = T.dot(U, p_mu_W) + p_mu_b
+            cov_prior0 = T.nnet.softplus(T.dot(U, p_cov_W) + p_cov_b)
+
+        return mu_prior0, cov_prior0
+
     # """"""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""#
 
     def _inferenceAndReconstruction(self, X, dropout_prob=0., U=None):
@@ -677,20 +723,12 @@ class DKF(BaseModel, object):
 
         observation_params = self._getEmissionFxn(z_q, X=X)
         mu_trans, cov_trans = self._getTransitionFxn(z_q, X=X, U=U)
-        mu_prior = T.concatenate(
-            [
-                T.alloc(
-                    np.asarray(0.).astype(config.floatX), X.shape[0], 1,
-                    self.params['dim_stochastic']), mu_trans[:, :-1, :]
-            ],
-            axis=1)
-        cov_prior = T.concatenate(
-            [
-                T.alloc(
-                    np.asarray(1.).astype(config.floatX), X.shape[0], 1,
-                    self.params['dim_stochastic']), cov_trans[:, :-1, :]
-            ],
-            axis=1)
+        # TODO: replace zeroth prior mean/covariance with something that's
+        # actually learnt. Make sure you update other pieces of code which rely
+        # on these quantities.
+        mu_prior0, cov_prior0 = self._getInitPriorFxn(X, U)
+        mu_prior = T.concatenate([mu_prior0, mu_trans[:, :-1, :]], axis=1)
+        cov_prior = T.concatenate([cov_prior0, cov_trans[:, :-1, :]], axis=1)
 
         # Guide to return values: mu_q, cov_q define q_\phi(z_t \mid z_{t-1},
         # x) in the paper. mu_prior, cov_prior define p_\theta(z_t \mid
@@ -865,6 +903,9 @@ class DKF(BaseModel, object):
                 = self._inferenceAndReconstruction(
                     X, dropout_prob=self.params['rnn_dropout'], U=U)
             negCLL = self._getNegCLL(obs_params, X, M)
+            # XXX: does this consider the extra KL which comes from z_0? If not,
+            # should make it consider that. If so, should update so that it
+            # measures KL against action-conditioned prior for z_0.
             TemporalKL = self._getTemporalKL(mu_q, cov_q, mu_prior, cov_prior,
                                              M2D)
             train_cost = negCLL + anneal * TemporalKL
@@ -957,8 +998,7 @@ class DKF(BaseModel, object):
     def sample(self, nsamples=100, T=10, U=None):
         assert T > 1, 'Sample atleast 2 timesteps'
         # Initial sample
-        # TODO: if I'm using a conditional model then initial sample should be
-        # conditional, too.
+        # XXX: change this to be conditional sample, if necessary
         z = np.random.randn(
             nsamples, 1, self.params['dim_stochastic']).astype(config.floatX)
         assert not np.any(np.isnan(z))
@@ -1006,9 +1046,6 @@ class DKF(BaseModel, object):
                 else:
                     X_in = X[:, t - 1:t]
                 z = zvec[:, t:t + 1]
-                # XXX: Is this handling GRU/LSTM internal state correctly?
-                # Heck, is there any implicit recurrent state (i.e. anything
-                # other than z)?
                 X[:, t:t + 1] = self.emission_fxn(z, X_in)
                 assert not np.any(np.isnan(X))
         return X, zvec
