@@ -132,7 +132,7 @@ def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d):
     by_row = flat_samples.reshape((N * num_samples, T, D))
     del flat_samples
     if is_2d:
-        raise NotImplementedError('Need to fix this')
+        rec_by_row = dataset.reconstruct_poses(by_row)
     else:
         rec_by_row = dataset.reconstruct_skeletons(by_row)
     del by_row
@@ -168,12 +168,14 @@ if __name__ == '__main__':
 
     print('Generating eval data')
     is_2d = isinstance(dataset, p2d_loader.P2DDataset)
+    pred_usable = None
     if is_2d:
-        raise NotImplementedError("Need to fix this branch (tricky)")
         result = dataset.get_ds_for_eval(train=False, discard_no_annos=True)
         for_cond, for_pred = result[:2]
-        pred_scales = result[3]
-        for_pred_recon = None
+        pred_scales = result[2]
+        if dataset.has_sparse_annos:
+            pred_usable = result[3]
+        for_pred_recon = dataset.reconstruct_poses(for_pred)
     else:
         for_cond, for_pred = dataset.get_ds_for_eval(train=False)
         for_pred_recon = dataset.reconstruct_skeletons(for_pred)
@@ -202,13 +204,14 @@ if __name__ == '__main__':
                 '/poses_2d_true',
                 compression='gzip',
                 shuffle=True,
-                data=for_pred)
+                data=for_pred_recon)
             fp['/scales_2d'] = f32(pred_scales)
             fp.create_dataset(
                 '/poses_2d_pred',
                 compression='gzip',
                 shuffle=True,
                 data=dkf_preds)
-        # TODO: will need this for Ikea
-        # fp['/is_usable'] = pred_usable
+            extra_data['pck_joints'] = dataset.pck_joints
+        if pred_usable is not None:
+            fp['/is_usable'] = pred_usable
         fp['/extra_data'] = json.dumps(extra_data)

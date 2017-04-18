@@ -11,10 +11,6 @@ def loadDataset():
     data = P2DDataset(
         './h36m_action_data.h5',
         seq_length,
-        seq_skip,
-        gap=gap,
-        val_frac=0.2,
-        completion_length=256,
         have_actions=True,
         remove_head=False,
         head_vel=False)
