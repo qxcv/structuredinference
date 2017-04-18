@@ -4,8 +4,6 @@ from p2d_loader import P3DDataset
 def loadDataset():
     fr = 30
     fr_eff = 15
-    # it's at 30fps, so this gives us 10fps effective
-    frame_skip = fr // fr_eff
     # sequences will be around 6s (90 frames); shorter ones get kept, but end
     # is masked out
     seq_length = 6 * fr_eff
@@ -13,7 +11,7 @@ def loadDataset():
     discard_shorter = int(round(0.8 * fr_eff))
     # jump forward this far between chosen sequences
     gap = 23
-    data = P3DDataset(data_file_path='./ntu_data.h5', frame_skip=frame_skip)
+    data = P3DDataset(data_file_path='./ntu_data.h5')
 
     dataset = {}
 

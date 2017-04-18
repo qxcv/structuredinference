@@ -2,14 +2,11 @@ from p2d_loader import P3DDataset
 
 
 def loadDataset():
-    fr = 50
     fr_eff = 15
-    frame_skip = fr // fr_eff
     seq_length = 6 * fr_eff
     discard_shorter = int(round(0.8 * fr_eff))
     gap = 17
-    data = P3DDataset(data_file_path='./h36m_action_data.h5',
-                      frame_skip=frame_skip)
+    data = P3DDataset(data_file_path='./h36m_action_data.h5')
 
     dataset = {}
 
