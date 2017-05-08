@@ -8,4 +8,4 @@ if [ ! -z "$@" ]; then
     fi
 fi
 exec python2.7 $extra_args train.py -vm LR -infm structured -ds 50 \
-    -dh 50 -uid ikeadb-no-acts
+    -dh 50 -uid ikeadb-no-acts -sfreq 5 -ar 1000
