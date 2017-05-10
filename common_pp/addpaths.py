@@ -4,9 +4,10 @@
 import os
 import sys
 
-pp_path = os.path.expanduser('~/repos/pose-prediction/keras')
+ppk_path = os.path.expanduser('~/repos/pose-prediction/keras')
+pp_path = os.path.expanduser('~/repos/pose-prediction')
 tm_path = os.path.expanduser('~/repos/theanomodels')
-paths = {pp_path, tm_path}
+paths = {ppk_path, tm_path, pp_path}
 for path in paths:
     assert os.path.isdir(path), 'code at %s must exist' % path
     if path not in sys.path:

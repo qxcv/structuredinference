@@ -121,7 +121,8 @@ def get_args(runme_path):
     return no_nl
 
 
-def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d):
+def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d,
+                  seq_ids):
     """Get a bunch of predictions for validation set. Tries to manage memory
     carefully!"""
     N, T, D = for_pred.shape
@@ -131,10 +132,12 @@ def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d):
     # squash so that different samples appear in different rows
     by_row = flat_samples.reshape((N * num_samples, T, D))
     del flat_samples
+    # gotta make this the same size as flat_samples
+    seq_ids_flat = np.concatenate([[r] * num_samples for r in seq_ids])
     if is_2d:
-        rec_by_row = dataset.reconstruct_poses(by_row)
+        rec_by_row = dataset.reconstruct_poses(by_row, seq_ids_flat)
     else:
-        rec_by_row = dataset.reconstruct_skeletons(by_row)
+        rec_by_row = dataset.reconstruct_skeletons(by_row, seq_ids_flat)
     del by_row
     rv_shape = (N, num_samples) + rec_by_row.shape[1:]
     return rec_by_row.reshape(rv_shape)
@@ -171,17 +174,22 @@ if __name__ == '__main__':
     pred_usable = None
     if is_2d:
         result = dataset.get_ds_for_eval(train=False, discard_no_annos=True)
-        for_cond, for_pred = result[:2]
-        pred_scales = result[2]
+        for_cond, for_pred = result['conditioning'], result['prediction']
+        pred_scales = result['prediction_scales']
         if dataset.has_sparse_annos:
-            pred_usable = result[3]
-        for_pred_recon = dataset.reconstruct_poses(for_pred)
+            pred_usable = result['prediction_valids']
+        seq_ids = result['prediction_seq_ids']
+        orig_frame_numbers = result['prediction_frame_nums']
+        # XXX: These WON'T be scaled correctly, as I'm not passing in video ID.
+        # Later code also won't be able to scale because it's missing the
+        # per-sequence offset :(
+        for_pred_recon = dataset.reconstruct_poses(for_pred, seq_ids)
     else:
         for_cond, for_pred = dataset.get_ds_for_eval(train=False)
         for_pred_recon = dataset.reconstruct_skeletons(for_pred)
     print('Getting predictions')
     dkf_preds = get_all_preds(dkf, dataset, for_cond, for_pred,
-                              args.num_samples, is_2d)
+                              args.num_samples, is_2d, seq_ids)
     print('Writing predictions')
     with h5py.File(args.dest_h5, 'w') as fp:
         extra_data = {}
@@ -198,6 +206,14 @@ if __name__ == '__main__':
                 compression='gzip',
                 shuffle=True,
                 data=dkf_preds)
+            # fp.create_dataset(
+            #     '/seq_ids_3d_json',
+            #     compression='gzip',
+            #     data=json.dumps(seq_ids.tolist()))
+            # fp.create_dataset(
+            #     '/orig_frame_numbers_3d',
+            #     compression='gzip',
+            #     data=orig_frame_numbers)
         else:
             fp['/parents_2d'] = dataset.parents
             fp.create_dataset(
@@ -212,6 +228,18 @@ if __name__ == '__main__':
                 shuffle=True,
                 data=dkf_preds)
             extra_data['pck_joints'] = dataset.pck_joints
+
+            # next two params are for making videos of predictions on top of
+            # original frames
+
+            # tells us name of sequence in original file which contained poses
+            # used for prediction
+            fp['/seq_ids_2d_json'] = json.dumps(seq_ids.tolist())
+            # tells us the sequence number of each frame in that original file
+            fp.create_dataset(
+                '/orig_frame_numbers_2d',
+                compression='gzip',
+                data=orig_frame_numbers)
         if pred_usable is not None:
             fp['/is_usable'] = pred_usable
         fp['/extra_data'] = json.dumps(extra_data)

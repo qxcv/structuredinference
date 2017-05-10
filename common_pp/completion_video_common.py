@@ -24,19 +24,24 @@ def load_sorted_paths(frame_dir):
 
 
 def alignment_constant(rec_x, true_x):
-    # This almost certainly has a simple analytic solution, but I can't
+    # This almost certainly has a simple analytic solution, but I can't be
     # bothered finding it right now. Instead, I'm centring both, scaling until
     # they match, then returning alpha and beta required to do the scaling
     # for other samples.
+    # Update: ...unsurprisingly, this doesn't work very well :(
     # expect single poses (2*j)
     assert true_x.shape == rec_x.shape
     assert true_x.shape[0] == 2 and rec_x.shape[0] == 2
     assert true_x.ndim == 2 and rec_x.ndim == 2
     rec_cen = rec_x - rec_x.mean(axis=1)[:, None]
     true_cen = true_x - true_x.mean(axis=1)[:, None]
-    objective = lambda a: np.sqrt(np.sum((rec_cen * a - true_cen).flatten() ** 2))
+
+    def objective(a):
+        return np.sqrt(np.sum((rec_cen * a - true_cen).flatten()**2))
+
     opt_result = fmin(objective, x0=19)
     alpha, = opt_result
-    # to reconstruct: (rec_x - rec_x.mean(axis=1)) * alpha + true_x.mean(axis=1)
+    # to reconstruct: (rec_x - rec_x.mean(axis=1)) * alpha +
+    # true_x.mean(axis=1)
     beta = true_x.mean(axis=1) - alpha * rec_x.mean(axis=1)
     return alpha, beta
