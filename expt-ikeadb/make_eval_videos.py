@@ -9,6 +9,7 @@ import os
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.io import loadmat
+from scipy.misc import imread
 import h5py
 
 import addpaths  # noqa
@@ -52,13 +53,21 @@ if __name__ == '__main__':
             fp['/seq_ids_2d_json'].value.decode('utf8'))
         vid_name = json_vid_names[sel_idx]
         print('Selected sample set %d (video name %s)' % (sel_idx, vid_name))
-        seq_frame_inds = fp['/orig_frame_numbers_2d'].value[sel_idx]
-        true_poses = fp['/poses_2d_true'].value[sel_idx]
-        pred_poses = fp['/poses_2d_pred'].value[sel_idx]
-        num_samples = pred_poses.shape[0]
+        seq_frame_inds_pred = fp['/pred_frame_numbers_2d'].value[sel_idx]
+        true_poses_pred = fp['/poses_2d_true'].value[sel_idx]
+        pred_poses_pred = fp['/poses_2d_pred'].value[sel_idx]
+        seq_frame_inds_cond = fp['/cond_frame_numbers_2d'].value[sel_idx]
+        true_poses_cond = fp['/poses_2d_cond_true'].value[sel_idx]
+        pred_poses_cond = fp['/poses_2d_cond_pred'].value[sel_idx]
+        cond_steps = true_poses_cond.shape[0]
+        seq_frame_inds = np.concatenate(
+            [seq_frame_inds_cond, seq_frame_inds_pred])
+        true_poses = np.concatenate([true_poses_cond, true_poses_pred], axis=0)
+        out_poses = np.concatenate([pred_poses_cond, pred_poses_pred], axis=1)
+        num_samples = out_poses.shape[0]
         seq_names = ['True poses'] + \
                     ['Sample %d' % d for d in range(num_samples)]
-        pose_seqs = np.stack([true_poses] + [r for r in pred_poses], axis=0)
+        pose_seqs = np.stack([true_poses] + [r for r in out_poses], axis=0)
         parents = fp['/parents_2d'].value
     meta = meta_dict[vid_name]
     path_suffix = meta['path_suffix']
@@ -70,6 +79,13 @@ if __name__ == '__main__':
     all_frame_fns = [f for f in all_frame_fns if f.endswith('.jpg')]
     frame_paths = [all_frame_fns[i] for i in seq_frame_inds]
 
+    # we will preload frames
+    orig_frames = [imread(fn) for fn in frame_paths]
+    # drop brightness the hacky way
+    dark_final = (orig_frames[cond_steps-1] / 2).astype('uint8')
+    dark_list = [dark_final] * (len(orig_frames) - cond_steps)
+    trunc_frames = orig_frames[:cond_steps] + dark_list
+
     pose_mat_path = os.path.join(POSE_DIR, 'pose_clip_%d.mat' % tmp2_id)
     pose_mat = loadmat(pose_mat_path, squeeze_me=True)
 
@@ -78,9 +94,10 @@ if __name__ == '__main__':
         'Completed poses in %s' % args.results_h5_path,
         parents,
         pose_seqs,
-        frame_paths=[frame_paths] * (1 + num_samples),
+        frames=[orig_frames] + [trunc_frames] * num_samples,
         subplot_titles=seq_names,
-        fps=50 / 9.0)
+        fps=50 / 9.0,
+        crossover=cond_steps)
     if args.vid_dir is not None:
         # save video
         print('Saving video')
@@ -99,7 +116,7 @@ if __name__ == '__main__':
             # dpi defaults to 300
             dpi=300,
             # go at one-third of original speed
-            fps=50 / (3*3))
+            fps=50 / (3 * 3))
     else:
         print('Showing sequence')
         plt.show()

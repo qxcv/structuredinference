@@ -29,51 +29,40 @@ def f32(x):
     return np.asarray(x, dtype='float32')
 
 
-def forecast_on_batch(dkf, poses, forecast_length):
+def forecast_on_batch(dkf, poses, full_length):
     """Extends a batch of pose sequences by the desired forecast length."""
     assert poses.ndim == 3, "Poses should be batch*time*dim"
     prefix_length = poses.shape[1]
     poses = poses.astype('float32')
     batch_size = len(poses)
+    # if this isn't true then we're not actually predicting anything (just
+    # returning a truncated prefix of the original sequence passed through the
+    # DKF)
+    assert full_length > prefix_length
 
     forecast = np.zeros(
-        (batch_size, forecast_length, poses.shape[-1]), dtype=config.floatX)
+        (batch_size, full_length, poses.shape[-1]), dtype=config.floatX)
     mask = np.ones_like(poses, dtype=config.floatX)
     # ignore mu_z/logcov_z for now. will have to test later whether
     # using mu_z in place of z improves performance
-    z, mu_z, logcov_z = DKF_evaluate.infer(dkf, poses, mask)
+    full_z, mu_z, logcov_z = DKF_evaluate.infer(dkf, poses, mask)
     # take just last timestep
-    z = z[:, -1:]
+    z = full_z[:, -1:]
     # z needs to be 3D (nsamples, time, stochdim)
     assert z.ndim == 3 and z.shape[:2] == (batch_size, 1)
 
-    for t in range(prefix_length, prefix_length + forecast_length):
+    # store the result of applying the emission function to inferred zs
+    forecast[:, :prefix_length] = dkf.emission_fxn(full_z)
+
+    for t in range(prefix_length, full_length):
         # completion based on transition prior only
         mu, logcov = dkf.transition_fxn(z)
         z = DKF_evaluate.sampleGaussian(mu, logcov).astype(config.floatX)
         e = dkf.emission_fxn(z)
         assert e.ndim == 3 and e.shape[:2] == (batch_size, 1)
-        forecast[:, t - prefix_length] = e[:, 0]
+        forecast[:, t] = e[:, 0]
 
     return forecast
-
-
-def forecast_batches(dkf, poses, forecast_length, batch_size=256):
-    """Splits input into batches and forecasts on each."""
-    assert poses.ndim == 3, poses.shape
-
-    num_batches = int(np.ceil(len(poses) / float(batch_size)))
-    forecast_list = []
-    for bnum in tqdm.tqdm(range(num_batches)):
-        start = bnum * batch_size
-        stop = start + batch_size
-        batch_poses = poses[start:stop]
-        forecast = forecast_on_batch(dkf, batch_poses, forecast_length)
-        forecast_list.append(forecast)
-
-    joined_forecasts = np.concatenate(forecast_list, axis=0)
-
-    return joined_forecasts
 
 
 def parse_dkf_args(runme_path, conf_path, weight_path):
@@ -122,10 +111,12 @@ def get_args(runme_path):
 
 
 def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d,
-                  seq_ids):
+                  pred_seq_ids, pred_frame_nums, cond_frame_nums):
     """Get a bunch of predictions for validation set. Tries to manage memory
     carefully!"""
-    N, T, D = for_pred.shape
+    N, Tp, D = for_pred.shape
+    Tc = for_cond.shape[1]
+    T = Tp + Tc
     flat_samples = np.zeros((N, num_samples, T, D), dtype='float32')
     for sample_num in range(num_samples):
         flat_samples[:, sample_num] = forecast_on_batch(dkf, for_cond, T)
@@ -133,14 +124,24 @@ def get_all_preds(dkf, dataset, for_cond, for_pred, num_samples, is_2d,
     by_row = flat_samples.reshape((N * num_samples, T, D))
     del flat_samples
     # gotta make this the same size as flat_samples
-    seq_ids_flat = np.concatenate([[r] * num_samples for r in seq_ids])
+    all_frame_nums = np.concatenate([cond_frame_nums, pred_frame_nums], axis=1)
+    assert all_frame_nums.shape[1] == T, all_frame_nums.shape
+    all_frame_nums_flat = np.concatenate(
+        [[r] * num_samples for r in all_frame_nums])
+    pred_seq_ids_flat = np.concatenate(
+        [[r] * num_samples for r in pred_seq_ids])
     if is_2d:
-        rec_by_row = dataset.reconstruct_poses(by_row, seq_ids_flat)
+        rec_by_row = dataset.reconstruct_poses(by_row, pred_seq_ids_flat,
+                                               all_frame_nums_flat)
     else:
-        rec_by_row = dataset.reconstruct_skeletons(by_row, seq_ids_flat)
+        rec_by_row = dataset.reconstruct_skeletons(by_row, pred_seq_ids_flat)
     del by_row
-    rv_shape = (N, num_samples) + rec_by_row.shape[1:]
-    return rec_by_row.reshape(rv_shape)
+    unflat_shape = (N, num_samples) + rec_by_row.shape[1:]
+    unflat_rec = rec_by_row.reshape(unflat_shape)
+    # return both predictions and conditioning prefix
+    rv_cond = unflat_rec[:, :, :Tc]
+    rv_pred = unflat_rec[:, :, Tc:]
+    return rv_cond, rv_pred
 
 
 parser = ArgumentParser()
@@ -176,20 +177,24 @@ if __name__ == '__main__':
         result = dataset.get_ds_for_eval(train=False, discard_no_annos=True)
         for_cond, for_pred = result['conditioning'], result['prediction']
         pred_scales = result['prediction_scales']
+        cond_scales = result['conditioning_scales']
         if dataset.has_sparse_annos:
             pred_usable = result['prediction_valids']
-        seq_ids = result['prediction_seq_ids']
-        orig_frame_numbers = result['prediction_frame_nums']
-        # XXX: These WON'T be scaled correctly, as I'm not passing in video ID.
-        # Later code also won't be able to scale because it's missing the
-        # per-sequence offset :(
-        for_pred_recon = dataset.reconstruct_poses(for_pred, seq_ids)
+        seq_ids = result['seq_ids']
+        pred_frame_numbers = result['prediction_frame_nums']
+        cond_frame_numbers = result['conditioning_frame_nums']
+        for_pred_recon = dataset.reconstruct_poses(for_pred, seq_ids,
+                                                   pred_frame_numbers)
+        for_cond_recon = dataset.reconstruct_poses(for_cond, seq_ids,
+                                                   cond_frame_numbers)
     else:
         for_cond, for_pred = dataset.get_ds_for_eval(train=False)
         for_pred_recon = dataset.reconstruct_skeletons(for_pred)
+        pred_frame_numbers = cond_frame_numbers = None
     print('Getting predictions')
-    dkf_preds = get_all_preds(dkf, dataset, for_cond, for_pred,
-                              args.num_samples, is_2d, seq_ids)
+    dkf_cond, dkf_preds = get_all_preds(dkf, dataset, for_cond, for_pred,
+                                        args.num_samples, is_2d, seq_ids,
+                                        pred_frame_numbers, cond_frame_numbers)
     print('Writing predictions')
     with h5py.File(args.dest_h5, 'w') as fp:
         extra_data = {}
@@ -221,13 +226,28 @@ if __name__ == '__main__':
                 compression='gzip',
                 shuffle=True,
                 data=for_pred_recon)
-            fp['/scales_2d'] = f32(pred_scales)
             fp.create_dataset(
                 '/poses_2d_pred',
                 compression='gzip',
                 shuffle=True,
                 data=dkf_preds)
+            fp['/scales_2d'] = f32(pred_scales)
             extra_data['pck_joints'] = dataset.pck_joints
+
+            # I'm also going to add the *prefix* which we used to generate the
+            # predictions, as well as the result of passing the conditioning
+            # sequence through the DKF (will be sorta lossy)
+            fp.create_dataset(
+                '/poses_2d_cond_true',
+                compression='gzip',
+                shuffle=True,
+                data=for_cond_recon)
+            fp.create_dataset(
+                '/poses_2d_cond_pred',
+                compression='gzip',
+                shuffle=True,
+                data=dkf_cond)
+            fp['/scales_2d_cond'] = f32(cond_scales)
 
             # next two params are for making videos of predictions on top of
             # original frames
@@ -237,9 +257,13 @@ if __name__ == '__main__':
             fp['/seq_ids_2d_json'] = json.dumps(seq_ids.tolist())
             # tells us the sequence number of each frame in that original file
             fp.create_dataset(
-                '/orig_frame_numbers_2d',
+                '/pred_frame_numbers_2d',
                 compression='gzip',
-                data=orig_frame_numbers)
+                data=pred_frame_numbers)
+            fp.create_dataset(
+                '/cond_frame_numbers_2d',
+                compression='gzip',
+                data=cond_frame_numbers)
         if pred_usable is not None:
             fp['/is_usable'] = pred_usable
         fp['/extra_data'] = json.dumps(extra_data)
