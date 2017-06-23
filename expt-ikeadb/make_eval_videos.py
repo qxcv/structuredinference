@@ -27,6 +27,11 @@ parser.add_argument(
     type=str,
     default=None,
     help='save videos to this directory instead of showing poses')
+parser.add_argument(
+    '--best-only',
+    action='store_true',
+    default=False,
+    help='only show best sample')
 
 if __name__ == '__main__':
     args = parser.parse_args()
@@ -64,9 +69,20 @@ if __name__ == '__main__':
             [seq_frame_inds_cond, seq_frame_inds_pred])
         true_poses = np.concatenate([true_poses_cond, true_poses_pred], axis=0)
         out_poses = np.concatenate([pred_poses_cond, pred_poses_pred], axis=1)
+        if args.best_only:
+            # only use the samples which are closest to the ground truth
+            diffs = true_poses[None, ...] - out_poses
+            # gives us N*S array; need to min over S
+            sq_diffs = (diffs**2).sum(axis=-1).sum(axis=-1).T
+            best_inds = np.argmin(sq_diffs, axis=1)
+            ax1_lin = np.arange(out_poses.shape[1])
+            out_poses = out_poses[None, best_inds, ax1_lin]
         num_samples = out_poses.shape[0]
-        seq_names = ['True poses'] + \
-                    ['Sample %d' % d for d in range(num_samples)]
+        if args.best_only:
+            seq_names = ['Estimated pose', ('Decoded pose', 'Forecasted pose')]
+        else:
+            seq_names = ['True poses'] + \
+                        ['Sample %d' % d for d in range(num_samples)]
         pose_seqs = np.stack([true_poses] + [r for r in out_poses], axis=0)
         parents = fp['/parents_2d'].value
     meta = meta_dict[vid_name]
@@ -91,7 +107,7 @@ if __name__ == '__main__':
 
     # important not to let return value be gc'd (anims won't run otherwise!)
     anim = draw_poses(
-        'Completed poses in %s' % args.results_h5_path,
+        None,
         parents,
         pose_seqs,
         frames=[orig_frames] + [trunc_frames] * num_samples,
