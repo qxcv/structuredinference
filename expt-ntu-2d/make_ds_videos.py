@@ -4,19 +4,17 @@
 import argparse
 import json
 import os
+import random
 import re
 import subprocess
-import sys
+import shutil
 import tempfile
 import zipfile
 
 import h5py
-
 import numpy as np
-
 import matplotlib.pyplot as plt
-
-import cv2
+from scipy.misc import imread
 
 import addpaths  # noqa
 from plot_seqs import draw_poses
@@ -26,36 +24,18 @@ ZIPS_DIR = '/data/home/sam/ntu-rgbd/'
 ZIPS_DIR = '/home/sam/sshfs/paloalto' + ZIPS_DIR  # XXX
 
 parser = argparse.ArgumentParser()
-parser.add_argument('vid_name', help='name of video sequence to show')
+parser.add_argument(
+    '--vid_name', help='name of video sequence to show (otherwise random)')
+parser.add_argument(
+    '--save',
+    default=None,
+    metavar='DEST',
+    help='if supplied, save to video file instead of showing')
 
 
-class CV2Video(object):
-    def __init__(self, file_path):
-        self.cap = cv2.VideoCapture(file_path)
-        if not self.cap.isOpened():
-            exists = os.path.exists(file_path)
-            print(
-                "Couldn't read '%s', file exists? %s" % (file_path, 'yes'
-                                                         if exists else 'no'),
-                file=sys.stderr)
-            raise IOError("Failed to open '%s' (OpenCV doesn't give any error "
-                          "message beyond the implicit \"fuck you\" of "
-                          "failure)" % file_path)
-        self.n_frames = self.cap.get(cv2.CAP_PROP_FRAME_COUNT)
+class ZipVideo:
+    FRAME_TEMPLATE = '%04d.jpg'
 
-    def get_frame(self, fr_ind):
-        assert 0 <= fr_ind < self.n_frames, 'frame %d out of range [0, %d)' \
-            % (fr_ind, self.n_frames)
-        assert self.cap.set(cv2.CAP_PROP_POS_FRAMES, fr_ind), \
-            "could not skip to frame %d" % fr_ind
-        succ, frame = self.cap.read()
-        assert succ, "frame-reading failed on frame %d" % fr_ind
-        # OpenCV has weird BGR loading convention; need RGB instead
-        rgb_frame = frame[:, :, ::-1]
-        return rgb_frame
-
-
-class ZipCV2Video(CV2Video):
     def __init__(self, zip_path, path_in_zip):
         # read the video
         zf = zipfile.ZipFile(zip_path)
@@ -72,14 +52,26 @@ class ZipCV2Video(CV2Video):
                 intermediate_fp.write(buf)
             intermediate_fp.flush()
 
-            # transcode to .mp4 (was in DivX, the RAR of videos)
-            self.tmp_fp = tempfile.NamedTemporaryFile(suffix='.mjpg')
+            # just copy the frames out to disk, I give up trying to do anything
+            # more fancy
+            self.tmp_dir = intermediate_fp.name + '-frames'
+            os.makedirs(self.tmp_dir, exist_ok=True)
             subprocess.run(
-                ['ffmpeg', '-y', '-i', intermediate_fp.name, self.tmp_fp.name],
+                [
+                    'ffmpeg', '-i', intermediate_fp.name,
+                    os.path.join(self.tmp_dir, self.FRAME_TEMPLATE)
+                ],
                 check=True)
 
-        # initialise with the new file
-        super().__init__(self.tmp_fp.name)
+    def get_frame(self, fr_ind):
+        # ffmpeg starts at 1, we start at 0
+        fr_num = fr_ind + 1
+        frame_path = os.path.join(self.tmp_dir, self.FRAME_TEMPLATE % fr_num)
+        return imread(frame_path)
+
+    def __del__(self):
+        if self.tmp_dir is not None:
+            shutil.rmtree(self.tmp_dir)
 
 
 _vid_name_re = re.compile(r'^S(?P<setup>\d{3})C(?P<camera>\d{3})'
@@ -102,12 +94,13 @@ def parse_name(name):
 
 
 if __name__ == '__main__':
-    assert int(cv2.__version__.split('.')[0]) >= 3, \
-        "Only tested with OpenCV 3"
     args = parser.parse_args()
     vid_name = args.vid_name
 
     with h5py.File(H5_PATH) as fp:
+        if vid_name is None:
+            vid_name = random.choice(list(fp['/seqs']))
+            print("Selected video '%s'" % vid_name)
         poses = fp['/seqs/' + vid_name + '/poses'].value
         action_ids = fp['/seqs/' + vid_name + '/actions'].value
         action_name_map = np.asarray(
@@ -117,10 +110,10 @@ if __name__ == '__main__':
     # read out all the frames we need
     zip_name, avi_name, start_frame, end_frame = parse_name(vid_name)
     zip_path = os.path.join(ZIPS_DIR, zip_name)
-    video = ZipCV2Video(zip_path, avi_name)
+    video = ZipVideo(zip_path, avi_name)
     frames = [
         video.get_frame(frame_idx)
-        for frame_idx in range(start_frame, end_frame)
+        for frame_idx in range(start_frame, end_frame + 1)
     ]
 
     pose_seqs = poses[None, ...]
@@ -138,6 +131,11 @@ if __name__ == '__main__':
         pose_seqs,
         frames=[frames],
         subplot_titles=seq_names,
-        fps=50 / 9.0,
+        # always plot at 10fps so that we can actually see the action :P
+        fps=10,
         action_labels=action_labels)
-    plt.show()
+    if args.save is not None:
+        print('Saving video to %s' % args.save)
+        anims.save(args.save)
+    else:
+        plt.show()
