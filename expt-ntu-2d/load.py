@@ -3,9 +3,7 @@ from p2d_loader import P2DDataset
 
 def loadDataset():
     # frame rate is 30fps, but we skip frames so that we go down to 15fps
-    fr = 30
     fr_eff = 15
-    frame_skip = fr // fr_eff
     # I'm going to keep a few seconds. Some sequences are shorter than others,
     # so there's a definite tradeoff here:
     seq_length = 2 * fr_eff
@@ -16,7 +14,6 @@ def loadDataset():
     data = P2DDataset(
         data_file_path='./ntu_data.h5',
         seq_length=seq_length,
-        seq_skip=frame_skip,
         gap=gap)
 
     dataset = {}
