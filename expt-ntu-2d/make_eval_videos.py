@@ -31,6 +31,15 @@ parser.add_argument(
     default=False,
     help='only show best sample')
 
+
+def force_string(maybe_str):
+    if isinstance(maybe_str, str):
+        return maybe_str
+    elif isinstance(maybe_str, bytes):
+        return maybe_str.decode('utf8')
+    raise TypeError('no idea how to convert a %s' % type(maybe_str))
+
+
 if __name__ == '__main__':
     args = parser.parse_args()
 
@@ -40,8 +49,7 @@ if __name__ == '__main__':
         num_seqs = len(fp['/poses_2d_pred'])
         # pick a random one!
         sel_idx = np.random.randint(num_seqs)
-        json_vid_names = json.loads(
-            fp['/seq_ids_2d_json'].value.decode('utf8'))
+        json_vid_names = json.loads(force_string(fp['/seq_ids_2d_json'].value))
         vid_name = json_vid_names[sel_idx]
         print('Selected sample set %d (video name %s)' % (sel_idx, vid_name))
         seq_frame_inds_pred = fp['/pred_frame_numbers_2d'].value[sel_idx]
@@ -85,7 +93,7 @@ if __name__ == '__main__':
     ###########################################################################
     # v XXX: keep this generic for refactoring purposes
     # drop brightness the hacky way
-    dark_final = (orig_frames[cond_steps-1] / 2).astype('uint8')
+    dark_final = (orig_frames[cond_steps - 1] / 2).astype('uint8')
     dark_list = [dark_final] * (len(orig_frames) - cond_steps)
     trunc_frames = orig_frames[:cond_steps] + dark_list
 
