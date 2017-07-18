@@ -13,8 +13,8 @@ def loadDataset():
         seq_length,
         completion_length=256,
         have_actions=True,
-        remove_head=True,
-        head_vel=False)
+        # remove_head=True,
+        head_vel=True)
 
     dataset = {}
 

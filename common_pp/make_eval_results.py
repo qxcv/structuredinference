@@ -1,4 +1,5 @@
 #!/usr/bin/env python2
+# -*- coding: utf-8 -*-
 """Write out predictions file for this dataset and method. Output will be
 processed by ``make_stats.py`` in ``pose-prediction`` repo."""
 
@@ -24,42 +25,174 @@ sys.path.append(os.getcwd())
 from load import loadDataset  # noqa: E402
 
 
+# v XXX
+# # I want to get a collossal 2D vector of (mu, log_var) rows at the end of
+# # this :)
+# inferred_z_params = []
+# rolled_z_params = []
+# ^ XXX
+
+
 def f32(x):
     return np.asarray(x, dtype='float32')
+
+
+def fX(x):
+    return np.asarray(x, dtype=config.floatX)
+
+
+def genselect(arr, inds):
+    """Select some elements along the inds.ndim-th axis of arr. Takes arr of
+    shape shape (a1, a2, …, am), and inds of shape (a1, a2, …, a(k-1), bk),
+    where k <= m. The elements of inds index into the kth axis of a, allowing
+    you to keep only a subset of "supercolumns" along a given axis.
+
+    There ought to be a Numpy function to do this, but I can't find it :/"""
+    ishape = inds.shape
+    irank = len(inds.shape)
+    ashape = arr.shape
+    arank = len(ashape)
+    assert irank <= arank, 'indices dims cannot exceed array dims'
+    assert ashape[:irank-1] == ishape[:-1], \
+        'indices shape %s does not match array shape %s on all relevant axes' \
+        % (ishape, ashape)
+    oshape = ishape + ashape[-(arank - irank):]
+    assert len(oshape) == arank
+    out_volume = np.empty(oshape)
+    mgrids = np.mgrid[[slice(None, top) for top in ishape[:-1]]]
+    # flatten grids so that we can use them to index
+    mgrids = [g.flatten() for g in mgrids]
+    # could probably do this without the loop, but doesn't matter
+    for i in range(ishape[-1]):
+        ith_inds = inds[..., i].flatten()
+        new_vals = arr[mgrids + [ith_inds]]
+        exp_shape = (np.prod(ishape[:-1]),) + ashape[-(arank - irank):]
+        assert new_vals.shape == exp_shape, (new_vals.shape, exp_shape)
+        out_volume[mgrids + [i]] = new_vals
+    return out_volume
 
 
 def forecast_on_batch(dkf, poses, full_length):
     """Extends a batch of pose sequences by the desired forecast length."""
     assert poses.ndim == 3, "Poses should be batch*time*dim"
     prefix_length = poses.shape[1]
-    poses = poses.astype('float32')
+    poses = fX(poses)
     batch_size = len(poses)
     # if this isn't true then we're not actually predicting anything (just
     # returning a truncated prefix of the original sequence passed through the
     # DKF)
     assert full_length > prefix_length
+    # number of predictions to keep in the beam
+    beam_size = 10
+    # number of extra samples to produce for each beam item at each iteration
+    extra_samples = 3
 
     forecast = np.zeros(
         (batch_size, full_length, poses.shape[-1]), dtype=config.floatX)
     mask = np.ones_like(poses, dtype=config.floatX)
-    # ignore mu_z/logcov_z for now. will have to test later whether
-    # using mu_z in place of z improves performance
-    full_z, mu_z, logcov_z = DKF_evaluate.infer(dkf, poses, mask)
-    # take just last timestep
-    z = full_z[:, -1:]
-    # z needs to be 3D (nsamples, time, stochdim)
-    assert z.ndim == 3 and z.shape[:2] == (batch_size, 1)
+    init_zs = []
+    init_xs = []
+    init_err_mats = []
+    _, mu_z, logcov_z = DKF_evaluate.infer(dkf, poses, mask)
+    mu_z = fX(mu_z)
+    logcov_z = fX(logcov_z)
+    for beam_step in range(beam_size * extra_samples):
+        # ignore mu_z/logcov_z for now. will have to test later whether
+        # using mu_z in place of z improves performance
+        tent_init_z = fX(DKF_evaluate.sampleGaussian(mu_z, logcov_z))
+        init_zs.append(tent_init_z)
+        # store the result of applying the emission function to inferred zs
+        tent_init_xs = fX(dkf.emission_fxn(tent_init_z))
+        init_xs.append(tent_init_xs)
+        err_vec = np.linalg.norm(tent_init_xs - poses, axis=-1).mean(axis=-1)
+        init_err_mats.append(err_vec)
+    # fill the beam
+    best_starts = np.argsort(np.stack(init_err_mats, -1), axis=-1)
+    best_starts = best_starts[:, :beam_size]
+    assert best_starts.shape == (batch_size, beam_size)
 
-    # store the result of applying the emission function to inferred zs
-    forecast[:, :prefix_length] = dkf.emission_fxn(full_z)
+    beam_zs = genselect(np.stack(init_zs, axis=1), best_starts)
+    exp_shape = (batch_size, beam_size, prefix_length)
+    assert beam_zs.shape[:3] == exp_shape \
+        and beam_zs.ndim == 4, (beam_zs.shape, exp_shape)
 
+    beam_xs = genselect(np.stack(init_xs, axis=1), best_starts)
+    assert beam_xs.shape[:3] == exp_shape \
+        and beam_xs.ndim == 4, (beam_xs.shape, exp_shape)
+
+    # now we can expand the beam one step at a time
     for t in range(prefix_length, full_length):
-        # completion based on transition prior only
-        mu, logcov = dkf.transition_fxn(z)
-        z = DKF_evaluate.sampleGaussian(mu, logcov).astype(config.floatX)
-        e = dkf.emission_fxn(z)
-        assert e.ndim == 3 and e.shape[:2] == (batch_size, 1)
-        forecast[:, t] = e[:, 0]
+        new_lead_shape = (batch_size, beam_size * extra_samples, t)
+        # we need bigger arrays to store our new zs, xs, etc.
+        beam_zs_cand = np.zeros(new_lead_shape + beam_zs.shape[-1:],
+                                dtype=config.floatX)
+        beam_xs_cand = np.zeros(new_lead_shape + beam_xs.shape[-1:],
+                                dtype=config.floatX)
+        for beam_ind in range(beam_size):
+            this_beam_zs = beam_zs[:, beam_ind]
+            this_beam_xs = beam_xs[:, beam_ind]
+            this_beam_mu, this_beam_logcov = dkf.transition_fxn(
+                this_beam_zs[:, :-1])
+            for extra_ind in range(extra_samples):
+                this_ind_z = fX(DKF_evaluate.sampleGaussian(this_beam_mu,
+                                                            this_beam_logcov))
+                this_ind_x = fX(dkf.emission_fxn(this_ind_z))
+                sub_ind = beam_ind * extra_samples + extra_ind
+                beam_zs_cand[:, sub_ind] = np.concatenate([this_beam_zs,
+                                                           this_ind_z], axis=1)
+                beam_xs_cand[:, sub_ind] = np.concatenate([this_beam_xs,
+                                                           this_ind_x], axis=1)
+        # now we can rank the candidates and throw out the ones we don't like
+        # I'm going to use distance-from-last-prediction to figure this one out
+        # Other things to consider ranking by:
+        # - Norm of acceleration vector
+        # - Distance from zero-velocity baseline
+        # - …maybe some other stuff? IDK.
+        # badness = np.lingalg.norm(
+        #     this_beam_xs[:, :, -1] - 2 * this_beam_xs[:, :, -2]
+        #     + this_beam_xs[:, :, -3], axis=-1)
+        badness = np.lingalg.norm(
+            this_beam_xs[:, :, -1] - this_beam_xs[:, :, -2], axis=-1)
+        by_badness = np.argsort(badness, axis=1)
+        assert by_badness.shape == (batch_size, beam_size * extra_samples), \
+            by_badness.shape
+        beam_sel = by_badness[:, :beam_size]
+        # new beam!
+        beam_zs = genselect(beam_zs_cand, beam_sel)
+        beam_xs = genselect(beam_xs_cand, beam_sel)
+
+        # # completion based on transition prior only
+        # mu, logcov = dkf.transition_fxn(z)
+        # all_e = []
+        # all_z = []
+        # for i in range(ncont):
+        #     tent_z = DKF_evaluate.sampleGaussian(mu, logcov)
+        #     tent_z = tent_z.astype(config.floatX)
+        #     tent_e = dkf.emission_fxn(tent_z)
+        #     assert tent_e.ndim == 3 and tent_e.shape[:2] == (batch_size, 1)
+        #     all_e.append(tent_e)
+        #     all_z.append(tent_z)
+        # # join along axis 1, since that's a singleton
+        # all_e = np.concatenate(all_e, axis=1)
+        # all_z = np.concatenate(all_z, axis=1)
+        # assert all_e.shape[:2] == (batch_size, ncont)
+        # # comp_z = the z used for comparison
+        # # comp_z = zvel_z
+        # comp_z = forecast[:, t-1:t]
+        # deltas = np.linalg.norm(all_e - comp_z, axis=-1)
+        # best_inds = np.argmin(deltas, axis=-1)
+        # assert best_inds.shape == (batch_size,)
+        # good_conts = all_e[np.arange(batch_size), best_inds]
+        # assert good_conts.ndim == 2 and good_conts.shape[0] == batch_size
+        # forecast[:, t] = good_conts
+        # # TODO: turn this into a beam search. Will mean keeping the latents
+        # # corresponding to the top-K closest outputs.
+        # new_z = all_z[np.arange(batch_size), best_inds][:, None]
+        # assert new_z.shape == z.shape, (z.shape, new_z.shape)
+        # z = new_z
+
+    # choose the beam element that looked best in the last step
+    forecast = beam_xs[:, 0]
 
     return forecast
 
@@ -197,6 +330,12 @@ if __name__ == '__main__':
     dkf_cond, dkf_preds = get_all_preds(dkf, dataset, for_cond, for_pred,
                                         args.num_samples, is_2d, seq_ids,
                                         pred_frame_numbers, cond_frame_numbers)
+    # # v XXX
+    # all_inferred_z = np.concatenate(inferred_z_params, axis=0)
+    # all_rolled_z = np.concatenate(rolled_z_params, axis=0)
+    # np.savez('z_dist_params.npz', inferred=all_inferred_z,
+    #          rolled=all_rolled_z)
+    # # ^ XXX
     print('Writing predictions')
     with h5py.File(args.dest_h5, 'w') as fp:
         extra_data = {}
