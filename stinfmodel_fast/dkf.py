@@ -794,6 +794,24 @@ class DKF(BaseModel, object):
         else:
             return negCLL.sum()
 
+    def _getL1Aux(self, l1_lam, obs_params, X, M, batchVector=False):
+        """Compute an L1-based auxiliary loss w/ coefficient lam."""
+        m_dim = M.ndim
+        if self.params['data_type'] == 'real':
+            mu_p = obs_params[0]
+            diff = abs(mu_p - X)
+            if m_dim == 3:
+                aux_loss = l1_lam * (diff * M).sum(1, keepdims=True)
+            else:
+                aux_loss = l1_lam * (diff.sum(2) * M).sum(
+                    1, keepdims=True)
+        else:
+            raise ValueError('only does L1 auxiliary for real outs right now')
+        if batchVector:
+            return aux_loss
+        else:
+            return aux_loss.sum()
+
     def resetDataset(self, newX, newM, newU=None, quiet=False):
         if not quiet:
             dims = self.dimData()
@@ -881,6 +899,13 @@ class DKF(BaseModel, object):
             'anneal', np.asarray(0.01, dtype=config.floatX), borrow=False)
         self._addWeights(
             'update_ctr', np.asarray(1., dtype=config.floatX), borrow=False)
+        use_l1 = bool(self.params.get('l1'))
+        if use_l1:
+            self._addWeights(
+                'l1',
+                np.asarray(self.params['l1'], dtype=config.floatX),
+                borrow=False)
+            l1_lam = self.tWeights['l1']
         lr = self.tWeights['lr']
         anneal = self.tWeights['anneal']
         iteration_t = self.tWeights['update_ctr']
@@ -909,6 +934,12 @@ class DKF(BaseModel, object):
             TemporalKL = self._getTemporalKL(mu_q, cov_q, mu_prior, cov_prior,
                                              M2D)
             train_cost = negCLL + anneal * TemporalKL
+            if use_l1:
+                self._p('using l1 reg with lam = %f' % self.params['l1'])
+                l1_term = self._getL1Aux(l1_lam, obs_params, X, M)
+                train_cost += l1_term
+            else:
+                l1_term = T.as_tensor_variable(0)
 
             # Get updates from optimizer
             model_params = self._getModelParams()
@@ -930,7 +961,7 @@ class DKF(BaseModel, object):
             self.train_debug = theano.function(
                 fxn_inputs, [
                     train_cost, norm_list[0], norm_list[1], norm_list[2],
-                    negCLL, TemporalKL, anneal.sum()
+                    negCLL, TemporalKL, anneal.sum(), l1_term
                 ],
                 updates=optimizer_up,
                 name='Train (with Debug)')
@@ -948,6 +979,9 @@ class DKF(BaseModel, object):
             M2D,
             batchVector=True)
         eval_cost = eval_CNLLvec + eval_KLvec
+        if use_l1:
+            eval_l1_term = self._getL1Aux(l1_lam, eval_obs_params, X, M, batchVector=True)
+            eval_cost += eval_l1_term
 
         # From here on, convert to the log covariance since we only use it for evaluation
         assert np.all(eval_cov_q.tag.test_value > 0.), 'should be positive'
@@ -1055,7 +1089,8 @@ class DKF(BaseModel, object):
 
 if __name__ == '__main__':
     """ use this to check compilation for various options"""
-    from parse_args_dkf import parse; params = parse()
+    from parse_args_dkf import parse
+    params = parse()
     if params['use_nade']:
         params['data_type'] = 'binary_nade'
     else:

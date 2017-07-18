@@ -40,6 +40,7 @@ parser.add_argument('-vonly', '--validate_only', action='store_true', help='Only
 
 #Optimization
 parser.add_argument('-lr', '--lr', action='store', default=8e-4, help='Learning rate', type=float)
+parser.add_argument('-l1', '--l1', action='store', default=None, help='L1 regularise coefficient', type=float)
 parser.add_argument('-opt', '--optimizer', action='store', default='adam', help='Optimizer', choices=['adam', 'rmsprop'])
 parser.add_argument('-bs', '--batch_size', action='store', default=20, help='Batch Size', type=int)
 parser.add_argument('-ar', '--anneal_rate', action='store', default=10., help='Number of param. updates before anneal=1', type=float)
@@ -89,6 +90,7 @@ def parse(argv=None):
     hmap['use_nade'] = 'nade'
     hmap['ntrain'] = 'nt'
     hmap['use_cond'] = 'cond'
+    hmap['l1_lam'] = 'l1'
     combined = ''
     for k in hmap:
         if k in params:

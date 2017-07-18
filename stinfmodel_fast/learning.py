@@ -70,7 +70,7 @@ def learn(dkf,
         bound = 0
         for bnum, batch_idx in enumerate(batchlist):
             batch_idx = batchlist[bnum]
-            batch_bound, p_norm, g_norm, opt_norm, negCLL, KL, anneal = dkf.train_debug(
+            batch_bound, p_norm, g_norm, opt_norm, negCLL, KL, anneal, l1 = dkf.train_debug(
                 idx=batch_idx)
 
             # Number of frames
@@ -78,6 +78,7 @@ def learn(dkf,
             # Correction for replicating batch
             if replicate_K is not None:
                 batch_bound, negCLL, KL = batch_bound / replicate_K, negCLL / replicate_K, KL / replicate_K,
+                l1 = l1 / replicate_K
                 M_sum = M_sum / replicate_K
             # Update bound
             bound += batch_bound
@@ -101,8 +102,8 @@ def learn(dkf,
                 dkf._p((
                     'Bnum: %d, Batch Bound: %.4f, |w|: %.4f, |dw|: %.4f, |w_opt|: %.4f'
                 ) % (bnum, bval, p_norm, g_norm, opt_norm))
-                dkf._p(('-veCLL:%.4f, KL:%.4f, anneal:%.4f') %
-                       (negCLL, KL, anneal))
+                dkf._p(('-veCLL:%.4f, KL:%.4f, anneal:%.4f, l1:%.4f') %
+                       (negCLL, KL, anneal, l1))
         if normalization == 'frame':
             bound /= (float(mask.sum()) / replicate_K)
         elif normalization == 'sequence':

@@ -13,7 +13,6 @@ import os
 import shlex
 import sys
 from theano import config
-import tqdm
 
 from stinfmodel_fast import evaluate as DKF_evaluate
 from stinfmodel_fast.dkf import DKF
@@ -187,6 +186,9 @@ if __name__ == '__main__':
                                                    pred_frame_numbers)
         for_cond_recon = dataset.reconstruct_poses(for_cond, seq_ids,
                                                    cond_frame_numbers)
+        pred_actions = result['prediction_actions']
+        cond_actions = result['conditioning_actions']
+        action_names = dataset.action_names
     else:
         for_cond, for_pred = dataset.get_ds_for_eval(train=False)
         for_pred_recon = dataset.reconstruct_skeletons(for_pred)
@@ -264,6 +266,17 @@ if __name__ == '__main__':
                 '/cond_frame_numbers_2d',
                 compression='gzip',
                 data=cond_frame_numbers)
+
+            # also action data
+            fp.create_dataset(
+                '/cond_actions_2d',
+                compression='gzip',
+                data=cond_actions)
+            fp.create_dataset(
+                '/pred_actions_2d',
+                compression='gzip',
+                data=pred_actions)
+            fp['/action_names'] = json.dumps(action_names)
         if pred_usable is not None:
             fp['/is_usable'] = pred_usable
         fp['/extra_data'] = json.dumps(extra_data)
